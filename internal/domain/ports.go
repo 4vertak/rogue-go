@@ -3,13 +3,13 @@ package domain
 type Renderer interface {
 	Init() error
 	Shutdown()
-	Draw(state *RenderState)              // кадр: карта, туман, акторы, UI
-	PromptChoice(title string, n int) int // запрос 0..n, блокирующий
+	Draw(state *RenderState)
+	PromptChoice(title string, n int) int
 	Message(text string)
 }
 
 type Input interface {
-	NextAction() Action // блокирующий: перемещение/использование/выход
+	NextAction() Action
 }
 
 type Storage interface {

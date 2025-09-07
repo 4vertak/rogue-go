@@ -3,22 +3,21 @@ package main
 import (
 	"log"
 
-	"github.com/4vertak/rogue-go/internal/data/repo"
+	"github.com/4vertak/rogue-go/internal/datalayer/repo"
 	"github.com/4vertak/rogue-go/internal/domain"
-	"github.com/4vertak/rogue-go/internal/presentation/input"
-	"github.com/4vertak/rogue-go/internal/presentation/ncui"
+	"github.com/4vertak/rogue-go/internal/presentation/tty"
 )
 
 func main() {
-	rend := ncui.New()
-	in := input.New()
+	r := tty.NewRenderer()
+	in := tty.NewInput()
 	store := repo.NewJSON("save.json", "scores.json")
 
-	if err := rend.Init(); err != nil {
+	if err := r.Init(); err != nil {
 		log.Fatal(err)
 	}
-	defer rend.Shutdown()
+	defer r.Shutdown()
 
-	game := domain.NewGame(store, rend, in) // инверсия зависимостей
-	game.Run()                              // блокирующий цикл тиков
+	game := domain.NewGame(store, r, in)
+	game.Run()
 }
