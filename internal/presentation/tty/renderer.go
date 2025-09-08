@@ -19,7 +19,7 @@ func (r *Renderer) Shutdown()   {}
 func (r *Renderer) Draw(rs *domain.RenderState) {
 	fmt.Print("\033[H\033[2J") // clear
 	lvl := rs.Level
-	//отрисовка уровня и монстров
+	//отрисовка уровня
 	for y := 0; y < lvl.H; y++ {
 		var b strings.Builder
 		for x := 0; x < lvl.W; x++ {
@@ -29,6 +29,12 @@ func (r *Renderer) Draw(rs *domain.RenderState) {
 			for _, mob := range lvl.Mobs {
 				if mob.Pos.X == x && mob.Pos.Y == y {
 					ch = mob.Symbol
+					break
+				}
+			}
+			for _, item := range lvl.Items {
+				if item.Pos.X == x && item.Pos.Y == y {
+					ch = '*'
 					break
 				}
 			}
