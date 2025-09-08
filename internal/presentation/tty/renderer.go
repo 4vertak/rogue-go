@@ -19,7 +19,7 @@ func (r *Renderer) Shutdown()   {}
 func (r *Renderer) Draw(rs *domain.RenderState) {
 	fmt.Print("\033[H\033[2J") // clear
 	lvl := rs.Level
-	//отрисовка монстров
+	//отрисовка уровня и монстров
 	for y := 0; y < lvl.H; y++ {
 		var b strings.Builder
 		for x := 0; x < lvl.W; x++ {
