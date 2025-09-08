@@ -43,10 +43,25 @@ func (r *JSONRepo) LoadProgress() (*domain.GameSession, error) {
 	return &s, nil
 }
 
+
+// приватная функция для чтения спсика результатов без болкировки
+func (r *JSONRepo) readScores() ([]domain.ScoreEntry, error) {
+	f, err :=os.Open(r.scoresPath)
+	if err != nil {
+		return []domain.ScoreEntry{}, nil
+	}
+	defer f.Close()
+	var list []domain.ScoreEntry
+	if err := json.NewDecoder(f).Decode(&list); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
 func (r *JSONRepo) AppendScore(se domain.ScoreEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	list, _ := r.TopScores(1<<31 - 1)
+	list, _ := r.readScores()
 	list = append(list, se)
 	sort.Slice(list, func(i, j int) bool { return list[i].Gold > list[j].Gold })
 	f, err := os.Create(r.scoresPath)
@@ -60,17 +75,13 @@ func (r *JSONRepo) AppendScore(se domain.ScoreEntry) error {
 func (r *JSONRepo) TopScores(limit int) ([]domain.ScoreEntry, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	f, err := os.Open(r.scoresPath)
+	list, err := r.readScores()
 	if err != nil {
-		return []domain.ScoreEntry{}, nil
-	}
-	defer f.Close()
-	var list []domain.ScoreEntry
-	if err := json.NewDecoder(f).Decode(&list); err != nil {
 		return nil, err
 	}
+	
 	if limit < len(list) {
 		list = list[:limit]
-	}
+}
 	return list, nil
 }
