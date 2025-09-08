@@ -9,5 +9,5 @@ type Item struct {
 	Strength  int
 	Value     int
 	Weapon    *Weapon
-	Pos       Pos // <---  позиция на карте
+	Pos       Pos
 }

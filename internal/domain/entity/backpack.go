@@ -1,7 +1,7 @@
 package entity
 
 type Backpack struct {
-	Items map[string][]Item // up to 9 per type, except Treasure
+	Items map[string][]Item
 }
 
 func NewBackpack() *Backpack {

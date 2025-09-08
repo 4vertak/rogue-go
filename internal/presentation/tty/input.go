@@ -1,25 +1,22 @@
 package tty
 
 import (
-	"bufio"
-	"os"
-
 	"github.com/4vertak/rogue-go/internal/domain"
+	"github.com/rthornton128/goncurses"
 )
 
 type Input struct {
-	in *bufio.Reader
+	stdscr *goncurses.Window
 }
 
-func NewInput() *Input { return &Input{in: bufio.NewReader(os.Stdin)} }
+func NewInput(stdscr *goncurses.Window) *Input {
+	return &Input{stdscr: stdscr}
+}
 
 func (i *Input) NextAction() domain.Action {
-	b, _, err := i.in.ReadRune()
-	if err != nil {
-		return domain.Action{Type: domain.Quit}
-	}
+	key := i.stdscr.GetChar()
 
-	switch b {
+	switch key {
 	case 'w', 'W':
 		return domain.Action{Type: domain.MoveUp}
 	case 's', 'S':
@@ -36,9 +33,9 @@ func (i *Input) NextAction() domain.Action {
 		return domain.Action{Type: domain.UseElixir}
 	case 'e':
 		return domain.Action{Type: domain.UseScroll}
-	case 27: // ESC key
+	case goncurses.KEY_ESC:
 		return domain.Action{Type: domain.Quit}
 	default:
-		return domain.Action{Type: -1} // Unknown action
+		return domain.Action{Type: -1}
 	}
 }
