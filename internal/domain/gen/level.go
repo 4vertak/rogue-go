@@ -26,12 +26,69 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 	}
 
 	rooms := []entity.Room{}
-	// Генерация комнат (80% шанс)
+	generateRoom(rng, tiles, W, H, cfg, &rooms)
+
+	// Соединение соседних комнат
+	generatePassage(rng, tiles, rooms)
+
+	// Лестница вниз
+	var exit entity.Pos
+
+	if len(rooms) > 0 {
+		stair := rooms[rng.Intn(len(rooms))]
+		exit = entity.Pos{X: stair.X + stair.W/2, Y: stair.Y + stair.H/2}
+		tiles[exit.Y][exit.X] = entity.Exit
+	}
+
+	// Монстры
+	mobs := []entity.Monster{}
+	for _, rm := range rooms {
+		if rng.Intn(2) == 0 {
+			mobs = append(mobs, entity.Monster{
+				Pos:       entity.Pos{X: rm.X + rng.Intn(rm.W), Y: rm.Y +rng.Intn(rm.H)},
+				Stats:     entity.Stats{HP: 5 + index, MaxHP: 5 + index, STR: 3, DEX: 3},
+				Type:      "zombie",
+				Hostility: 5,
+				Symbol:    'z',
+			})
+		}
+	}
+
+	// Предметы
+	items := []entity.Item{}
+	for _, rm := range rooms {
+		if rng.Intn(3) == 0 {
+			for {
+				ix := rm.X + rng.Intn(rm.W)
+				iy := rm.Y + rng.Intn(rm.H)
+				if  exit.X != ix && exit.Y != iy {
+					items = append(items, entity.Item{
+						Type:   "Food",
+						Health: 5,
+						Pos:    entity.Pos{X: ix, Y: iy},
+					})
+					break
+				}
+			}
+		}
+	}
+
+	return entity.Level{
+		Index: index,
+		W:     W,
+		H:     H,
+		Tiles: tiles,
+		Rooms: rooms,
+		Exit:  exit,
+		Mobs:  mobs,
+		Items: items,
+	}
+}
+
+func generateRoom(rng *rand.Rand, tiles [][]entity.Tile, W int, H int, cfg Config, rooms *[]entity.Room) {
+
 	for gy := 0; gy < 3; gy++ {
 		for gx := 0; gx < 3; gx++ {
-			if rng.Intn(100) >= 80 {
-				continue
-			}
 			cx, cy := gx*cfg.CellW, gy*cfg.CellH
 
 			maxRW := max(cfg.MinRW, cfg.CellW-2)
@@ -59,7 +116,7 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 			ry := cy + 1 + rng.Intn(maxY)
 
 			room := entity.Room{X: rx, Y: ry, W: rw, H: rh}
-			rooms = append(rooms, room)
+			*rooms = append(*rooms, room)
 
 			for y := ry; y < ry+rh && y < H; y++ {
 				for x := rx; x < rx+rw && x < W; x++ {
@@ -68,8 +125,9 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 			}
 		}
 	}
+}
 
-	// Соединение соседних комнат
+func generatePassage(rng *rand.Rand, tiles [][]entity.Tile, rooms []entity.Room) {
 	for gy := 0; gy < 3; gy++ {
 		for gx := 0; gx < 3; gx++ {
 			idx := gy*3 + gx
@@ -84,54 +142,8 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 			}
 		}
 	}
-
-	// Лестница вниз
-	var exit entity.Pos
-	if len(rooms) > 0 {
-		stair := rooms[rng.Intn(len(rooms))]
-		exit = entity.Pos{X: stair.X + stair.W/2, Y: stair.Y + stair.H/2}
-		tiles[exit.Y][exit.X] = entity.Exit
-	}
-
-	// Монстры
-	mobs := []entity.Monster{}
-	for _, rm := range rooms {
-		if rng.Intn(2) == 0 {
-			mobs = append(mobs, entity.Monster{
-				Pos:       entity.Pos{X: rm.X + rm.W/2, Y: rm.Y + rm.H/2},
-				Stats:     entity.Stats{HP: 5 + index, MaxHP: 5 + index, STR: 3, DEX: 3},
-				Type:      "zombie",
-				Hostility: 5,
-				Symbol:    'z',
-			})
-		}
-	}
-
-	// Предметы
-	items := []entity.Item{}
-	for _, rm := range rooms {
-		if rng.Intn(3) == 0 {
-			ix := rm.X + rng.Intn(rm.W)
-			iy := rm.Y + rng.Intn(rm.H)
-			items = append(items, entity.Item{
-				Type:   "Food",
-				Health: 5,
-				Pos:    entity.Pos{X: ix, Y: iy},
-			})
-		}
-	}
-
-	return entity.Level{
-		Index: index,
-		W:     W,
-		H:     H,
-		Tiles: tiles,
-		Rooms: rooms,
-		Exit:  exit,
-		Mobs:  mobs,
-		Items: items,
-	}
 }
+
 
 func connectRooms(rng *rand.Rand, tiles [][]entity.Tile, a, b entity.Room) {
 	if a.W == 0 || b.W == 0 {
