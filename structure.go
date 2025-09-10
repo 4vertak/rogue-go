@@ -19,6 +19,7 @@ type GameState struct {
 	GameOver     bool
 
 	Messages []string
+	StatusMessages []string  // Отдельные сообщения для статуса
 }
 
 // Character представляет игрока

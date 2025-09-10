@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rthornton128/goncurses"
@@ -253,48 +254,100 @@ func (gi *GameInterface) renderMap() {
 }
 
 func (gi *GameInterface) renderStatus() {
-	gi.statusWindow.Erase()
-	gi.statusWindow.Box(0, 0)
-	
-	player := CurrentGameState.Player
-	gi.statusWindow.MovePrint(1, 1, "Level:"+strconv.Itoa(CurrentGameState.CurrentLevel))
-	gi.statusWindow.MovePrint(2, 1, "Health:"+strconv.Itoa(player.Health)+"/"+strconv.Itoa(player.MaxHealth))
-	gi.statusWindow.MovePrint(3, 1, "Str:"+strconv.Itoa(player.Strength))
-	if player.CurrentWeapon != nil {
-		gi.statusWindow.MovePrint(3, 10, "("+strconv.Itoa(player.Strength+player.CurrentWeapon.StrengthBoost)+")")
-	}
-	gi.statusWindow.MovePrint(4, 1, "Agi:"+strconv.Itoa(player.Agility))
-	gi.statusWindow.MovePrint(5, 1, "Gold:"+strconv.Itoa(player.Treasures))
-	
-	if player.CurrentWeapon != nil {
-		gi.statusWindow.MovePrint(6, 1, "Weapon: Equipped")
-	} else {
-		gi.statusWindow.MovePrint(6, 1, "Weapon: None")
-	}
-	
-	// Отображаем активные эффекты
-	gi.renderEffects()
-	
-	gi.statusWindow.Refresh()
+    gi.statusWindow.Erase()
+    gi.statusWindow.Box(0, 0)
+    
+    player := CurrentGameState.Player
+    gi.statusWindow.MovePrint(1, 1, "Level:"+strconv.Itoa(CurrentGameState.CurrentLevel))
+    gi.statusWindow.MovePrint(2, 1, "Health:"+strconv.Itoa(player.Health)+"/"+strconv.Itoa(player.MaxHealth))
+    gi.statusWindow.MovePrint(3, 1, "Str:"+strconv.Itoa(player.Strength))
+    if player.CurrentWeapon != nil {
+        gi.statusWindow.MovePrint(3, 10, "("+strconv.Itoa(player.Strength+player.CurrentWeapon.StrengthBoost)+")")
+    }
+    gi.statusWindow.MovePrint(4, 1, "Agi:"+strconv.Itoa(player.Agility))
+    gi.statusWindow.MovePrint(5, 1, "Gold:"+strconv.Itoa(player.Treasures))
+    
+    if player.CurrentWeapon != nil {
+        gi.statusWindow.MovePrint(6, 1, "Weapon: Equipped")
+    } else {
+        gi.statusWindow.MovePrint(6, 1, "Weapon: None")
+    }
+    
+    // Отображаем активные эффекты
+    gi.renderEffects()
+    
+    // Отображаем сообщения о предметах в статусе
+    gi.renderStatusMessages()
+    
+    gi.statusWindow.Refresh()
+}
+
+func (gi *GameInterface) renderStatusMessages() {
+    if CurrentGameState.StatusMessages != nil && len(CurrentGameState.StatusMessages) > 0 {
+        // Получаем размеры окна статуса
+        maxY, maxX := gi.statusWindow.MaxYX()
+        startRow := 12 // Начинаем ниже эффектов
+        
+        gi.statusWindow.MovePrint(startRow, 1, "Recent items:")
+        startRow++
+        
+        // Показываем последние 5 сообщений
+        startIdx := max(0, len(CurrentGameState.StatusMessages)-5)
+        for i, msg := range CurrentGameState.StatusMessages[startIdx:] {
+            if startRow+i < maxY-2 { // Оставляем место для рамки
+                // Обрезаем длинные сообщения
+                maxLen := maxX - 4
+                if len(msg) > maxLen {
+                    msg = msg[:maxLen-3] + "..."
+                }
+                gi.statusWindow.MovePrint(startRow+i, 1, msg)
+            }
+        }
+    }
 }
 
 func (gi *GameInterface) renderMessageBar() {
-	gi.messageWindow.Erase()
-	gi.messageWindow.Box(0, 0)
-	
-	// Отображаем последние сообщения
-	if CurrentGameState.Messages != nil && len(CurrentGameState.Messages) > 0 {
-		startIdx := max(0, len(CurrentGameState.Messages)-2) // Показываем 2 последних сообщения
-		for i, msg := range CurrentGameState.Messages[startIdx:] {
-			if i < 2 { // Вмещается 2 сообщения
-				gi.messageWindow.MovePrint(i+1, 1, msg)
-			}
-		}
-	} else {
-		gi.messageWindow.MovePrint(1, 1, "Move: WASD | Items: H-J-K-E | Pickup: P")
-	}
-	
-	gi.messageWindow.Refresh()
+    gi.messageWindow.Erase()
+    gi.messageWindow.Box(0, 0)
+    
+    // Получаем размеры окна сообщений
+    _, maxX := gi.messageWindow.MaxYX()
+    
+    // Всегда показываем управление в первой строке
+    controlText := "Move: WASD | Items: H-J-K-E | Pickup: P"
+    gi.messageWindow.MovePrint(1, 1, controlText)
+    
+    // Во второй строке показываем только не-предметные сообщения
+    if CurrentGameState.Messages != nil && len(CurrentGameState.Messages) > 0 {
+        // Берем последнее сообщение, если оно не о предмете
+        lastMsg := CurrentGameState.Messages[len(CurrentGameState.Messages)-1]
+        if !isItemMessage(lastMsg) && len(lastMsg) > 0 {
+            // Обрезаем если слишком длинное
+            maxLen := maxX - 4
+            if len(lastMsg) > maxLen {
+                lastMsg = lastMsg[:maxLen-3] + "..."
+            }
+            gi.messageWindow.MovePrint(2, 1, lastMsg)
+        }
+    }
+    
+    gi.messageWindow.Refresh()
+}
+
+// Вспомогательная функция для определения сообщений о предметах
+func isItemMessage(message string) bool {
+    itemKeywords := []string{
+        "Picked up", "Equipped", "treasure", "food", "potion", "scroll", 
+        "weapon", "gold", "HP", "STR", "AGI", "MaxHP", "Health", "Agility",
+        "Strength", "item", "backpack", "full", "No items", "pick up",
+    }
+    messageLower := strings.ToLower(message)
+    for _, keyword := range itemKeywords {
+        if strings.Contains(messageLower, strings.ToLower(keyword)) {
+            return true
+        }
+    }
+    return false
 }
 
 func (gi *GameInterface) renderEffects() {

@@ -59,6 +59,7 @@ func initializeGame() {
 		GameWon:      false,
 		GameOver:     false,
 		Messages:     make([]string, 0), // Инициализируем сообщения
+		StatusMessages: make([]string, 0), // Инициализируем сообщения статуса
 	}
 
 	// Генерация первого уровня

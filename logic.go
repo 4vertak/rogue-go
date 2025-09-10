@@ -107,14 +107,31 @@ func (gl *GameLogic) UseItem(itemType ItemType, index int) {
 }
 
 func (gl *GameLogic) AddMessage(message string) {
-	if CurrentGameState.Messages == nil {
-		CurrentGameState.Messages = make([]string, 0)
-	}
-	
-	if len(CurrentGameState.Messages) >= 5 {
-		CurrentGameState.Messages = CurrentGameState.Messages[1:]
-	}
-	CurrentGameState.Messages = append(CurrentGameState.Messages, message)
+    // Основные сообщения (для нижней панели)
+    if CurrentGameState.Messages == nil {
+        CurrentGameState.Messages = make([]string, 0)
+    }
+    
+    if len(CurrentGameState.Messages) >= 3 {
+        CurrentGameState.Messages = CurrentGameState.Messages[1:]
+    }
+    CurrentGameState.Messages = append(CurrentGameState.Messages, message)
+    
+    // Сообщения о предметах - в статус (правую панель)
+    if isItemMessage(message) {
+        if CurrentGameState.StatusMessages == nil {
+            CurrentGameState.StatusMessages = make([]string, 0)
+        }
+        
+        if len(CurrentGameState.StatusMessages) >= 5 {
+            CurrentGameState.StatusMessages = CurrentGameState.StatusMessages[1:]
+        }
+        CurrentGameState.StatusMessages = append(CurrentGameState.StatusMessages, message)
+    }
+}
+
+func contains(s, substr string) bool {
+    return len(s) >= len(substr) && s[:len(substr)] == substr
 }
 
 func (gl *GameLogic) PickUpItem() {
