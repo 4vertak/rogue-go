@@ -23,43 +23,47 @@ func (gi *GameInterface) Initialize() error {
 	if err != nil {
 		return err
 	}
-	
+
 	goncurses.Raw(true)
 	goncurses.Echo(false)
 	goncurses.Cursor(0)
 	stdscr.Keypad(true)
-	
+
 	gi.stdscr = stdscr
 	gi.createWindows()
 	gi.initColors()
-	
+
 	return nil
 }
 
 func (gi *GameInterface) createWindows() {
 	rows, cols := gi.stdscr.MaxYX()
-	
+
 	// Главное игровое окно (центр экрана)
 	gameRows := rows - 6
 	gameCols := cols - 31
-	if gameRows < 10 { gameRows = 10 }
-	if gameCols < 20 { gameCols = 20 }
-	
+	if gameRows < 10 {
+		gameRows = 10
+	}
+	if gameCols < 20 {
+		gameCols = 20
+	}
+
 	gi.gameWindow = gi.stdscr.Sub(gameRows, gameCols, 0, 0)
 	gi.gameWindow.Keypad(true)
-	
+
 	// Окно статуса (справа)
 	gi.statusWindow = gi.stdscr.Sub(gameRows, 30, 0, gameCols)
 	gi.statusWindow.Keypad(true)
-	
+
 	// Окно сообщений (снизу слева)
 	gi.messageWindow = gi.stdscr.Sub(3, gameCols, gameRows, 0)
 	gi.messageWindow.Keypad(true)
-	
+
 	// Окно инвентаря (снизу справа)
 	gi.inventoryWindow = gi.stdscr.Sub(3, 30, gameRows, gameCols)
 	gi.inventoryWindow.Keypad(true)
-	
+
 	// Устанавливаем размер камеры равным usable area игрового окна
 	if CurrentGameState.Camera != nil {
 		maxY, maxX := gi.gameWindow.MaxYX()
@@ -70,30 +74,30 @@ func (gi *GameInterface) createWindows() {
 
 func (gi *GameInterface) Run() {
 	defer goncurses.End()
-	
+
 	gi.renderInitialScreen()
-	
+
 	// Неблокирующий ввод
 	gi.stdscr.Timeout(100) // 100ms timeout
-	
+
 	for CurrentGameState.IsRunning {
 		gi.renderGame()
 		gi.handleInput()
-		
+
 		if !CurrentGameState.GameOver && !CurrentGameState.GameWon {
 			GameActionsImpl.UpdateGameState()
 		}
-		
+
 		if CurrentGameState.GameOver {
 			gi.showGameOver()
 			break
 		}
-		
+
 		if CurrentGameState.GameWon {
 			gi.showVictory()
 			break
 		}
-		
+
 		// Небольшая задержка для снижения нагрузки на CPU
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -104,10 +108,10 @@ func (gi *GameInterface) renderInitialScreen() {
 	gi.stdscr.Print("=== ROGUE GAME ===\n")
 	gi.stdscr.Print("Press any key to start...")
 	gi.stdscr.Refresh()
-	
+
 	// Ожидаем ввода с блокировкой для начального экрана
-	gi.stdscr.Timeout(-1) // Блокирующий режим
-	gi.stdscr.GetChar()   // Ждем любого нажатия
+	gi.stdscr.Timeout(-1)  // Блокирующий режим
+	gi.stdscr.GetChar()    // Ждем любого нажатия
 	gi.stdscr.Timeout(100) // Возвращаем неблокирующий режим
 }
 
@@ -122,26 +126,26 @@ func (gi *GameInterface) renderGame() {
 func (gi *GameInterface) renderMap() {
 	gi.gameWindow.Erase()
 	gi.gameWindow.Box(0, 0)
-	
+
 	// Обновляем позицию камеры для следования за игроком
 	player := CurrentGameState.Player
 	camera := CurrentGameState.Camera
-	
+
 	if camera == nil || CurrentGameState.Level == nil {
 		return
 	}
-	
+
 	// Получаем размеры игрового окна (без учета интерфейса справа)
 	maxWinY, maxWinX := gi.gameWindow.MaxYX()
-	
+
 	// Учитываем рамку окна (2 символа с каждой стороны)
 	usableWidth := maxWinX - 2  // минус левая и правая рамка
 	usableHeight := maxWinY - 2 // минус верхняя и нижняя рамка
-	
+
 	// Центрируем камеру на игроке, но в пределах игрового окна
 	camera.X = player.Position.X - usableWidth/2
 	camera.Y = player.Position.Y - usableHeight/2
-	
+
 	// Ограничиваем камеру пределами карты
 	if camera.X < 0 {
 		camera.X = 0
@@ -149,49 +153,53 @@ func (gi *GameInterface) renderMap() {
 	if camera.Y < 0 {
 		camera.Y = 0
 	}
-	
+
 	// Получаем реальные размеры карты
 	mapWidth := len(CurrentGameState.Level.Grid)
 	if mapWidth == 0 {
 		return
 	}
 	mapHeight := len(CurrentGameState.Level.Grid[0])
-	
+
 	// Корректно ограничиваем камеру справа и снизу
-	if camera.X + usableWidth > mapWidth {
+	if camera.X+usableWidth > mapWidth {
 		camera.X = mapWidth - usableWidth
 	}
-	if camera.Y + usableHeight > mapHeight {
+	if camera.Y+usableHeight > mapHeight {
 		camera.Y = mapHeight - usableHeight
 	}
-	
+
 	// Убедимся, что камера не выходит за границы после корректировки
-	if camera.X < 0 { camera.X = 0 }
-	if camera.Y < 0 { camera.Y = 0 }
-	if camera.X > mapWidth - usableWidth && mapWidth > usableWidth {
+	if camera.X < 0 {
+		camera.X = 0
+	}
+	if camera.Y < 0 {
+		camera.Y = 0
+	}
+	if camera.X > mapWidth-usableWidth && mapWidth > usableWidth {
 		camera.X = mapWidth - usableWidth
 	}
-	if camera.Y > mapHeight - usableHeight && mapHeight > usableHeight {
+	if camera.Y > mapHeight-usableHeight && mapHeight > usableHeight {
 		camera.Y = mapHeight - usableHeight
 	}
-	
+
 	// Рендерим только видимую часть карты
 	for x := camera.X; x < camera.X+usableWidth && x < len(CurrentGameState.Level.Grid); x++ {
 		for y := camera.Y; y < camera.Y+usableHeight && y < len(CurrentGameState.Level.Grid[0]); y++ {
-			screenX := x - camera.X + 1  // +1 для рамки
-			screenY := y - camera.Y + 1  // +1 для рамки
-			
+			screenX := x - camera.X + 1 // +1 для рамки
+			screenY := y - camera.Y + 1 // +1 для рамки
+
 			// Проверяем границы внутри рамки более тщательно
-			if screenX <= 0 || screenY <= 0 || 
-			screenX >= maxWinX-1 || screenY >= maxWinY-1 {
+			if screenX <= 0 || screenY <= 0 ||
+				screenX >= maxWinX-1 || screenY >= maxWinY-1 {
 				continue // Пропускаем, если выходим за границы окна
 			}
-			
+
 			if CurrentGameState.Level.Visible[x][y] {
 				cell := CurrentGameState.Level.Grid[x][y]
 				var ch string
 				var color int16 = 0
-				
+
 				if cell.IsWall {
 					ch = "#"
 					color = 1
@@ -201,7 +209,7 @@ func (gi *GameInterface) renderMap() {
 				} else {
 					ch = " "
 				}
-				
+
 				// Проверка предметов
 				for _, item := range CurrentGameState.Items {
 					if item.Position.X == x && item.Position.Y == y {
@@ -209,18 +217,20 @@ func (gi *GameInterface) renderMap() {
 						color = gi.getItemColor(item)
 					}
 				}
-				
+
 				// Проверка врагов
 				for _, enemy := range CurrentGameState.Enemies {
-					if enemy.Position.X == x && enemy.Position.Y == y && enemy.IsVisible {
+					if enemy.Position.X == x && enemy.Position.Y == y && (enemy.IsVisible || enemy.Type == Mimic) {
+
 						ch = gi.getEnemySymbol(enemy)
 						color = gi.getEnemyColor(enemy)
+
 					}
 				}
-				
+
 				// Проверка игрока
-				if CurrentGameState.Player.Position.X == x && 
-				   CurrentGameState.Player.Position.Y == y {
+				if CurrentGameState.Player.Position.X == x &&
+					CurrentGameState.Player.Position.Y == y {
 					ch = "@"
 					color = 6
 				}
@@ -234,7 +244,7 @@ func (gi *GameInterface) renderMap() {
 						color = 3 // Yellow
 					}
 				}
-				
+
 				if color > 0 {
 					gi.gameWindow.ColorOn(color)
 				}
@@ -249,105 +259,105 @@ func (gi *GameInterface) renderMap() {
 			}
 		}
 	}
-	
+
 	gi.gameWindow.Refresh()
 }
 
 func (gi *GameInterface) renderStatus() {
-    gi.statusWindow.Erase()
-    gi.statusWindow.Box(0, 0)
-    
-    player := CurrentGameState.Player
-    gi.statusWindow.MovePrint(1, 1, "Level:"+strconv.Itoa(CurrentGameState.CurrentLevel))
-    gi.statusWindow.MovePrint(2, 1, "Health:"+strconv.Itoa(player.Health)+"/"+strconv.Itoa(player.MaxHealth))
-    gi.statusWindow.MovePrint(3, 1, "Str:"+strconv.Itoa(player.Strength))
-    if player.CurrentWeapon != nil {
-        gi.statusWindow.MovePrint(3, 10, "("+strconv.Itoa(player.Strength+player.CurrentWeapon.StrengthBoost)+")")
-    }
-    gi.statusWindow.MovePrint(4, 1, "Agi:"+strconv.Itoa(player.Agility))
-    gi.statusWindow.MovePrint(5, 1, "Gold:"+strconv.Itoa(player.Treasures))
-    
-    if player.CurrentWeapon != nil {
-        gi.statusWindow.MovePrint(6, 1, "Weapon: Equipped")
-    } else {
-        gi.statusWindow.MovePrint(6, 1, "Weapon: None")
-    }
-    
-    // Отображаем активные эффекты
-    gi.renderEffects()
-    
-    // Отображаем сообщения о предметах в статусе
-    gi.renderStatusMessages()
-    
-    gi.statusWindow.Refresh()
+	gi.statusWindow.Erase()
+	gi.statusWindow.Box(0, 0)
+
+	player := CurrentGameState.Player
+	gi.statusWindow.MovePrint(1, 1, "Level:"+strconv.Itoa(CurrentGameState.CurrentLevel))
+	gi.statusWindow.MovePrint(2, 1, "Health:"+strconv.Itoa(player.Health)+"/"+strconv.Itoa(player.MaxHealth))
+	gi.statusWindow.MovePrint(3, 1, "Str:"+strconv.Itoa(player.Strength))
+	if player.CurrentWeapon != nil {
+		gi.statusWindow.MovePrint(3, 10, "("+strconv.Itoa(player.Strength+player.CurrentWeapon.StrengthBoost)+")")
+	}
+	gi.statusWindow.MovePrint(4, 1, "Agi:"+strconv.Itoa(player.Agility))
+	gi.statusWindow.MovePrint(5, 1, "Gold:"+strconv.Itoa(player.Treasures))
+
+	if player.CurrentWeapon != nil {
+		gi.statusWindow.MovePrint(6, 1, "Weapon: Equipped")
+	} else {
+		gi.statusWindow.MovePrint(6, 1, "Weapon: None")
+	}
+
+	// Отображаем активные эффекты
+	gi.renderEffects()
+
+	// Отображаем сообщения о предметах в статусе
+	gi.renderStatusMessages()
+
+	gi.statusWindow.Refresh()
 }
 
 func (gi *GameInterface) renderStatusMessages() {
-    if CurrentGameState.StatusMessages != nil && len(CurrentGameState.StatusMessages) > 0 {
-        // Получаем размеры окна статуса
-        maxY, maxX := gi.statusWindow.MaxYX()
-        startRow := 12 // Начинаем ниже эффектов
-        
-        gi.statusWindow.MovePrint(startRow, 1, "Recent items:")
-        startRow++
-        
-        // Показываем последние 5 сообщений
-        startIdx := max(0, len(CurrentGameState.StatusMessages)-5)
-        for i, msg := range CurrentGameState.StatusMessages[startIdx:] {
-            if startRow+i < maxY-2 { // Оставляем место для рамки
-                // Обрезаем длинные сообщения
-                maxLen := maxX - 4
-                if len(msg) > maxLen {
-                    msg = msg[:maxLen-3] + "..."
-                }
-                gi.statusWindow.MovePrint(startRow+i, 1, msg)
-            }
-        }
-    }
+	if CurrentGameState.StatusMessages != nil && len(CurrentGameState.StatusMessages) > 0 {
+		// Получаем размеры окна статуса
+		maxY, maxX := gi.statusWindow.MaxYX()
+		startRow := 12 // Начинаем ниже эффектов
+
+		gi.statusWindow.MovePrint(startRow, 1, "Recent items:")
+		startRow++
+
+		// Показываем последние 5 сообщений
+		startIdx := max(0, len(CurrentGameState.StatusMessages)-5)
+		for i, msg := range CurrentGameState.StatusMessages[startIdx:] {
+			if startRow+i < maxY-2 { // Оставляем место для рамки
+				// Обрезаем длинные сообщения
+				maxLen := maxX - 4
+				if len(msg) > maxLen {
+					msg = msg[:maxLen-3] + "..."
+				}
+				gi.statusWindow.MovePrint(startRow+i, 1, msg)
+			}
+		}
+	}
 }
 
 func (gi *GameInterface) renderMessageBar() {
-    gi.messageWindow.Erase()
-    gi.messageWindow.Box(0, 0)
-    
-    // Получаем размеры окна сообщений
-    _, maxX := gi.messageWindow.MaxYX()
-    
-    // Всегда показываем управление в первой строке
-    controlText := "Move: WASD | Items: H-J-K-E | Pickup: P"
-    gi.messageWindow.MovePrint(1, 1, controlText)
-    
-    // Во второй строке показываем только не-предметные сообщения
-    if CurrentGameState.Messages != nil && len(CurrentGameState.Messages) > 0 {
-        // Берем последнее сообщение, если оно не о предмете
-        lastMsg := CurrentGameState.Messages[len(CurrentGameState.Messages)-1]
-        if !isItemMessage(lastMsg) && len(lastMsg) > 0 {
-            // Обрезаем если слишком длинное
-            maxLen := maxX - 4
-            if len(lastMsg) > maxLen {
-                lastMsg = lastMsg[:maxLen-3] + "..."
-            }
-            gi.messageWindow.MovePrint(2, 1, lastMsg)
-        }
-    }
-    
-    gi.messageWindow.Refresh()
+	gi.messageWindow.Erase()
+	gi.messageWindow.Box(0, 0)
+
+	// Получаем размеры окна сообщений
+	_, maxX := gi.messageWindow.MaxYX()
+
+	// Всегда показываем управление в первой строке
+	controlText := "Move: WASD | Items: H-J-K-E | Pickup: P"
+	gi.messageWindow.MovePrint(1, 1, controlText)
+
+	// Во второй строке показываем только не-предметные сообщения
+	if CurrentGameState.Messages != nil && len(CurrentGameState.Messages) > 0 {
+		// Берем последнее сообщение, если оно не о предмете
+		lastMsg := CurrentGameState.Messages[len(CurrentGameState.Messages)-1]
+		if !isItemMessage(lastMsg) && len(lastMsg) > 0 {
+			// Обрезаем если слишком длинное
+			maxLen := maxX - 4
+			if len(lastMsg) > maxLen {
+				lastMsg = lastMsg[:maxLen-3] + "..."
+			}
+			gi.messageWindow.MovePrint(2, 1, lastMsg)
+		}
+	}
+
+	gi.messageWindow.Refresh()
 }
 
 // Вспомогательная функция для определения сообщений о предметах
 func isItemMessage(message string) bool {
-    itemKeywords := []string{
-        "Picked up", "Equipped", "treasure", "food", "potion", "scroll", 
-        "weapon", "gold", "HP", "STR", "AGI", "MaxHP", "Health", "Agility",
-        "Strength", "item", "backpack", "full", "No items", "pick up",
-    }
-    messageLower := strings.ToLower(message)
-    for _, keyword := range itemKeywords {
-        if strings.Contains(messageLower, strings.ToLower(keyword)) {
-            return true
-        }
-    }
-    return false
+	itemKeywords := []string{
+		"Picked up", "Equipped", "treasure", "food", "potion", "scroll",
+		"weapon", "gold", "HP", "STR", "AGI", "MaxHP", "Health", "Agility",
+		"Strength", "item", "backpack", "full", "No items", "pick up",
+	}
+	messageLower := strings.ToLower(message)
+	for _, keyword := range itemKeywords {
+		if strings.Contains(messageLower, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (gi *GameInterface) renderEffects() {
@@ -356,7 +366,7 @@ func (gi *GameInterface) renderEffects() {
 		gi.statusWindow.MovePrint(8, 1, "Effects:")
 		for i, effect := range effects {
 			if i < 3 {
-				gi.statusWindow.MovePrint(9+i, 1, 
+				gi.statusWindow.MovePrint(9+i, 1,
 					gi.getEffectSymbol(effect)+" "+strconv.Itoa(effect.Duration))
 			}
 		}
@@ -366,26 +376,26 @@ func (gi *GameInterface) renderEffects() {
 func (gi *GameInterface) renderInventory() {
 	gi.inventoryWindow.Erase()
 	gi.inventoryWindow.Box(0, 0)
-	
+
 	backpack := CurrentGameState.Backpack
 	gi.inventoryWindow.MovePrint(1, 1, "F:"+strconv.Itoa(len(backpack.Food)))
 	gi.inventoryWindow.MovePrint(1, 5, "P:"+strconv.Itoa(len(backpack.Potions)))
 	gi.inventoryWindow.MovePrint(1, 9, "S:"+strconv.Itoa(len(backpack.Scrolls)))
 	gi.inventoryWindow.MovePrint(1, 13, "W:"+strconv.Itoa(len(backpack.Weapons)))
 	gi.inventoryWindow.MovePrint(1, 17, "T:"+strconv.Itoa(backpack.Treasure))
-	
+
 	gi.inventoryWindow.Refresh()
 }
 
 func (gi *GameInterface) handleInput() {
 	char := gi.stdscr.GetChar()
-	
+
 	// Проверяем на ошибку ввода (таймаут) - в новой версии goncurses
 	// GetChar() возвращает -1 при таймауте, но как rune
 	if char == goncurses.Key(-1) {
 		return // Нет ввода
 	}
-	
+
 	switch char {
 	case 'w', 'W':
 		GameActionsImpl.MovePlayer(0, -1)
@@ -413,19 +423,19 @@ func (gi *GameInterface) handleInput() {
 // Остальные функции остаются без изменений...
 
 func (gi *GameInterface) showWeaponSelection() {
-    gi.showSelection("Select weapon (0=Unequip, 1-9=Equip):", CurrentGameState.Backpack.Weapons, Weapon)
+	gi.showSelection("Select weapon (0=Unequip, 1-9=Equip):", CurrentGameState.Backpack.Weapons, Weapon)
 }
 
 func (gi *GameInterface) showFoodSelection() {
-    gi.showSelection("Select food (1-9):", CurrentGameState.Backpack.Food, Food)
+	gi.showSelection("Select food (1-9):", CurrentGameState.Backpack.Food, Food)
 }
 
 func (gi *GameInterface) showPotionSelection() {
-    gi.showSelection("Select potion (1-9):", CurrentGameState.Backpack.Potions, Potion)
+	gi.showSelection("Select potion (1-9):", CurrentGameState.Backpack.Potions, Potion)
 }
 
 func (gi *GameInterface) showScrollSelection() {
-    gi.showSelection("Select scroll (1-9):", CurrentGameState.Backpack.Scrolls, Scroll)
+	gi.showSelection("Select scroll (1-9):", CurrentGameState.Backpack.Scrolls, Scroll)
 }
 
 func (gi *GameInterface) showSelection(prompt string, items []*Item, itemType ItemType) {
@@ -433,37 +443,37 @@ func (gi *GameInterface) showSelection(prompt string, items []*Item, itemType It
 		gi.showMessage("No items available!")
 		return
 	}
-	
+
 	gi.stdscr.Erase()
 	gi.stdscr.Print(prompt + "\n\n")
-	
+
 	// Показываем текущее экипированное оружие
 	if itemType == Weapon && CurrentGameState.Player.CurrentWeapon != nil {
 		gi.stdscr.Print("Current: " + gi.getItemDescription(CurrentGameState.Player.CurrentWeapon) + "\n\n")
 	}
-	
+
 	// Отображаем предметы с правильными номерами (начиная с 1)
 	for i, item := range items {
 		gi.stdscr.Printf("%d: %s\n", i+1, gi.getItemDescription(item)) // i+1 чтобы номера начинались с 1
 	}
-	
+
 	if itemType == Weapon {
 		gi.stdscr.Print("0: Unequip current weapon\n")
 	}
-	
+
 	gi.stdscr.Print("\nPress number or ESC to cancel")
 	gi.stdscr.Refresh()
-	
+
 	// Временное включение блокирующего ввода для меню
 	gi.stdscr.Timeout(-1)
 	defer gi.stdscr.Timeout(100)
-	
+
 	for {
 		char := gi.stdscr.GetChar()
 		if char == goncurses.KEY_ESC {
 			break
 		}
-		
+
 		if digit := int(char - '0'); digit >= 0 {
 			if itemType == Weapon && digit == 0 {
 				GameActionsImpl.UseItem(itemType, 0) // снять оружие
@@ -493,11 +503,11 @@ func (gi *GameInterface) showMenu() {
 	gi.stdscr.Print("6. Exit game\n\n")
 	gi.stdscr.Print("Select option: ")
 	gi.stdscr.Refresh()
-	
+
 	// Временное включение блокирующего ввода для меню
 	gi.stdscr.Timeout(-1)
 	defer gi.stdscr.Timeout(100)
-	
+
 	char := gi.stdscr.GetChar()
 	switch char {
 	case '1':
@@ -521,7 +531,7 @@ func (gi *GameInterface) saveGameDialog() {
 	gi.stdscr.Erase()
 	gi.stdscr.Print("Enter filename to save: ")
 	gi.stdscr.Refresh()
-	
+
 	filename := gi.getInput()
 	if filename != "" {
 		err := GameActionsImpl.SaveGame(filename)
@@ -537,7 +547,7 @@ func (gi *GameInterface) loadGameDialog() {
 	gi.stdscr.Erase()
 	gi.stdscr.Print("Enter filename to load: ")
 	gi.stdscr.Refresh()
-	
+
 	filename := gi.getInput()
 	if filename != "" {
 		err := GameActionsImpl.LoadGame(filename)
@@ -552,7 +562,7 @@ func (gi *GameInterface) loadGameDialog() {
 func (gi *GameInterface) showHighScores() {
 	gi.stdscr.Erase()
 	gi.stdscr.Print("=== HIGH SCORES ===\n\n")
-	
+
 	if CurrentGameState.Statistics == nil || len(CurrentGameState.Statistics.BestScores) == 0 {
 		gi.stdscr.Print("No high scores yet!\n")
 	} else {
@@ -560,14 +570,14 @@ func (gi *GameInterface) showHighScores() {
 			if i >= 10 { // Показываем топ-10
 				break
 			}
-			gi.stdscr.Printf("%d. Level: %d, Treasures: %d\n", 
+			gi.stdscr.Printf("%d. Level: %d, Treasures: %d\n",
 				i+1, score.LevelReached, score.Treasures)
 		}
 	}
-	
+
 	gi.stdscr.Print("\nPress any key to continue...")
 	gi.stdscr.Refresh()
-	
+
 	// Временное включение блокирующего ввода
 	gi.stdscr.Timeout(-1)
 	gi.stdscr.GetChar()
@@ -582,7 +592,7 @@ func (gi *GameInterface) getInput() string {
 		goncurses.Echo(false)
 		gi.stdscr.Timeout(100)
 	}()
-	
+
 	input := ""
 	for {
 		char := gi.stdscr.GetChar()
@@ -606,7 +616,7 @@ func (gi *GameInterface) showMessage(message string) {
 	gi.stdscr.Erase()
 	gi.stdscr.Print(message + "\n\nPress any key to continue...")
 	gi.stdscr.Refresh()
-	
+
 	// Временное включение блокирующего ввода
 	gi.stdscr.Timeout(-1)
 	gi.stdscr.GetChar()
@@ -621,7 +631,7 @@ func (gi *GameInterface) showGameOver() {
 	gi.stdscr.Print("Enemies defeated: " + strconv.Itoa(CurrentGameState.Player.DefeatedEnemies) + "\n\n")
 	gi.stdscr.Print("Press any key to exit...")
 	gi.stdscr.Refresh()
-	
+
 	// Временное включение блокирующего ввода
 	gi.stdscr.Timeout(-1)
 	gi.stdscr.GetChar()
@@ -636,7 +646,7 @@ func (gi *GameInterface) showVictory() {
 	gi.stdscr.Print("Total enemies defeated: " + strconv.Itoa(CurrentGameState.Player.DefeatedEnemies) + "\n\n")
 	gi.stdscr.Print("Press any key to exit...")
 	gi.stdscr.Refresh()
-	
+
 	// Временное включение блокирующего ввода
 	gi.stdscr.Timeout(-1)
 	gi.stdscr.GetChar()
@@ -689,6 +699,23 @@ func (gi *GameInterface) getEnemySymbol(enemy *Enemy) string {
 		return "O"
 	case SnakeMage:
 		return "s"
+	case Mimic:
+		if enemy.IsVisible {
+			return "M"
+		} else {
+			koef := (enemy.Health - 20) / 5
+			if koef < 5 {
+				return "$"
+			} else if koef < 9 {
+				return "f"
+			} else if koef < 14 {
+				return "p"
+			} else if koef < 18 {
+				return "s"
+			} else {
+				return "w"
+			}
+		}
 	default:
 		return "e"
 	}

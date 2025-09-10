@@ -11,15 +11,15 @@ type GameState struct {
 	GameSession *GameSession
 	Statistics  *Statistics
 	Camera      *Camera
-	
+
 	// Флаги состояния
 	IsRunning    bool
 	CurrentLevel int
 	GameWon      bool
 	GameOver     bool
 
-	Messages []string
-	StatusMessages []string  // Отдельные сообщения для статуса
+	Messages       []string
+	StatusMessages []string // Отдельные сообщения для статуса
 }
 
 // Character представляет игрока
@@ -37,14 +37,14 @@ type Character struct {
 
 // Enemy представляет противника
 type Enemy struct {
-	Type        EnemyType
-	Health      int
-	Agility     int
-	Strength    int
-	Hostility   int
-	Position    Position
-	IsVisible   bool
-	Pattern     MovementPattern
+	Type      EnemyType
+	Health    int
+	Agility   int
+	Strength  int
+	Hostility int
+	Position  Position
+	IsVisible bool
+	Pattern   MovementPattern
 }
 
 // Item представляет предмет
@@ -127,30 +127,33 @@ type Position struct {
 
 // Cell представляет клетку карты
 type Cell struct {
-	IsWall      bool
-	IsCorridor  bool
+	IsWall       bool
+	IsCorridor   bool
 	IsDiscovered bool
-	IsVisible   bool
+	IsVisible    bool
 }
 
 // Camera представляет камеру для отображения карты
 type Camera struct {
-	X, Y int
+	X, Y          int
 	Width, Height int
 }
 
 // EnemyType представляет тип противника
 type EnemyType int
+
 const (
 	Zombie EnemyType = iota
 	Vampire
 	Ghost
 	Ogre
 	SnakeMage
+	Mimic
 )
 
 // ItemType представляет тип предмета
 type ItemType int
+
 const (
 	Treasure ItemType = iota
 	Food
@@ -161,6 +164,7 @@ const (
 
 // ItemSubType представляет подтип предмета
 type ItemSubType int
+
 const (
 	HealthPotion ItemSubType = iota
 	AgilityPotion
@@ -174,16 +178,19 @@ const (
 
 // MovementPattern представляет паттерн движения
 type MovementPattern int
+
 const (
 	Random MovementPattern = iota
 	Chase
 	Teleport
 	Diagonal
 	TwoStep
+	Imitator
 )
 
 // EffectType представляет тип эффекта
 type EffectType int
+
 const (
 	HealthEffect EffectType = iota
 	AgilityEffect
@@ -198,14 +205,14 @@ type GameActions interface {
 	UseItem(itemType ItemType, index int)
 	PickUpItem()
 	Attack(enemyIndex int)
-	
+
 	// Генерация
 	GenerateLevel(levelNum int)
-	
+
 	// Сохранение/загрузка
 	SaveGame(filename string) error
 	LoadGame(filename string) error
-	
+
 	// Обновление состояния
 	UpdateGameState()
 	CheckGameConditions()
