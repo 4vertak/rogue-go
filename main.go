@@ -58,10 +58,14 @@ func initializeGame() {
 		CurrentLevel: 1,
 		GameWon:      false,
 		GameOver:     false,
+		Messages:     make([]string, 0), // Инициализируем сообщения
 	}
 
 	// Генерация первого уровня
 	GameActionsImpl.GenerateLevel(1)
+	
+	// Добавляем стартовое сообщение
+	GameActionsImpl.(*GameLogic).AddMessage("Welcome to Go Rogue! Move with WASD")
 }
 
 func showMainMenu(ui *GameInterface) {

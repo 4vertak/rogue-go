@@ -40,7 +40,7 @@ func (gi *GameInterface) createWindows() {
 	
 	// Главное игровое окно (центр экрана)
 	gameRows := rows - 6
-	gameCols := cols - 30
+	gameCols := cols - 31
 	if gameRows < 10 { gameRows = 10 }
 	if gameCols < 20 { gameCols = 20 }
 	
@@ -99,7 +99,7 @@ func (gi *GameInterface) Run() {
 }
 
 func (gi *GameInterface) renderInitialScreen() {
-	gi.stdscr.Clear()
+	gi.stdscr.Erase()
 	gi.stdscr.Print("=== ROGUE GAME ===\n")
 	gi.stdscr.Print("Press any key to start...")
 	gi.stdscr.Refresh()
@@ -119,7 +119,7 @@ func (gi *GameInterface) renderGame() {
 }
 
 func (gi *GameInterface) renderMap() {
-	gi.gameWindow.Clear()
+	gi.gameWindow.Erase()
 	gi.gameWindow.Box(0, 0)
 	
 	// Обновляем позицию камеры для следования за игроком
@@ -175,13 +175,14 @@ func (gi *GameInterface) renderMap() {
 	}
 	
 	// Рендерим только видимую часть карты
-	for x := camera.X; x < camera.X+usableWidth && x < mapWidth; x++ {
-		for y := camera.Y; y < camera.Y+usableHeight && y < mapHeight; y++ {
+	for x := camera.X; x < camera.X+usableWidth && x < len(CurrentGameState.Level.Grid); x++ {
+		for y := camera.Y; y < camera.Y+usableHeight && y < len(CurrentGameState.Level.Grid[0]); y++ {
 			screenX := x - camera.X + 1  // +1 для рамки
 			screenY := y - camera.Y + 1  // +1 для рамки
 			
-			// Проверяем границы внутри рамки
-			if screenX >= maxWinX-1 || screenY >= maxWinY-1 || screenX <= 0 || screenY <= 0 {
+			// Проверяем границы внутри рамки более тщательно
+			if screenX <= 0 || screenY <= 0 || 
+			screenX >= maxWinX-1 || screenY >= maxWinY-1 {
 				continue // Пропускаем, если выходим за границы окна
 			}
 			
@@ -222,6 +223,16 @@ func (gi *GameInterface) renderMap() {
 					ch = "@"
 					color = 6
 				}
+
+				// Проверка выхода
+				if CurrentGameState.Level.ExitRoom != nil {
+					exitX := CurrentGameState.Level.ExitRoom.X + CurrentGameState.Level.ExitRoom.Width/2
+					exitY := CurrentGameState.Level.ExitRoom.Y + CurrentGameState.Level.ExitRoom.Height/2
+					if x == exitX && y == exitY && CurrentGameState.Level.Visible[x][y] {
+						ch = ">"
+						color = 3 // Yellow
+					}
+				}
 				
 				if color > 0 {
 					gi.gameWindow.ColorOn(color)
@@ -242,7 +253,7 @@ func (gi *GameInterface) renderMap() {
 }
 
 func (gi *GameInterface) renderStatus() {
-	gi.statusWindow.Clear()
+	gi.statusWindow.Erase()
 	gi.statusWindow.Box(0, 0)
 	
 	player := CurrentGameState.Player
@@ -268,11 +279,20 @@ func (gi *GameInterface) renderStatus() {
 }
 
 func (gi *GameInterface) renderMessageBar() {
-	gi.messageWindow.Clear()
+	gi.messageWindow.Erase()
 	gi.messageWindow.Box(0, 0)
 	
-	// Здесь можно отображать последние сообщения игры
-	gi.messageWindow.MovePrint(1, 1, "Move: WASD | Items: H-J-K-E | Pickup: P")
+	// Отображаем последние сообщения
+	if CurrentGameState.Messages != nil && len(CurrentGameState.Messages) > 0 {
+		startIdx := max(0, len(CurrentGameState.Messages)-2) // Показываем 2 последних сообщения
+		for i, msg := range CurrentGameState.Messages[startIdx:] {
+			if i < 2 { // Вмещается 2 сообщения
+				gi.messageWindow.MovePrint(i+1, 1, msg)
+			}
+		}
+	} else {
+		gi.messageWindow.MovePrint(1, 1, "Move: WASD | Items: H-J-K-E | Pickup: P")
+	}
 	
 	gi.messageWindow.Refresh()
 }
@@ -291,7 +311,7 @@ func (gi *GameInterface) renderEffects() {
 }
 
 func (gi *GameInterface) renderInventory() {
-	gi.inventoryWindow.Clear()
+	gi.inventoryWindow.Erase()
 	gi.inventoryWindow.Box(0, 0)
 	
 	backpack := CurrentGameState.Backpack
@@ -340,32 +360,38 @@ func (gi *GameInterface) handleInput() {
 // Остальные функции остаются без изменений...
 
 func (gi *GameInterface) showWeaponSelection() {
-	gi.showSelection("Select weapon (0-9):", CurrentGameState.Backpack.Weapons, Weapon)
+    gi.showSelection("Select weapon (0=Unequip, 1-9=Equip):", CurrentGameState.Backpack.Weapons, Weapon)
 }
 
 func (gi *GameInterface) showFoodSelection() {
-	gi.showSelection("Select food (1-9):", CurrentGameState.Backpack.Food, Food)
+    gi.showSelection("Select food (1-9):", CurrentGameState.Backpack.Food, Food)
 }
 
 func (gi *GameInterface) showPotionSelection() {
-	gi.showSelection("Select potion (1-9):", CurrentGameState.Backpack.Potions, Potion)
+    gi.showSelection("Select potion (1-9):", CurrentGameState.Backpack.Potions, Potion)
 }
 
 func (gi *GameInterface) showScrollSelection() {
-	gi.showSelection("Select scroll (1-9):", CurrentGameState.Backpack.Scrolls, Scroll)
+    gi.showSelection("Select scroll (1-9):", CurrentGameState.Backpack.Scrolls, Scroll)
 }
 
 func (gi *GameInterface) showSelection(prompt string, items []*Item, itemType ItemType) {
-	if len(items) == 0 {
+	if len(items) == 0 && (itemType != Weapon || CurrentGameState.Player.CurrentWeapon == nil) {
 		gi.showMessage("No items available!")
 		return
 	}
 	
-	gi.stdscr.Clear()
+	gi.stdscr.Erase()
 	gi.stdscr.Print(prompt + "\n\n")
 	
+	// Показываем текущее экипированное оружие
+	if itemType == Weapon && CurrentGameState.Player.CurrentWeapon != nil {
+		gi.stdscr.Print("Current: " + gi.getItemDescription(CurrentGameState.Player.CurrentWeapon) + "\n\n")
+	}
+	
+	// Отображаем предметы с правильными номерами (начиная с 1)
 	for i, item := range items {
-		gi.stdscr.Printf("%d: %s\n", i+1, gi.getItemDescription(item))
+		gi.stdscr.Printf("%d: %s\n", i+1, gi.getItemDescription(item)) // i+1 чтобы номера начинались с 1
 	}
 	
 	if itemType == Weapon {
@@ -385,12 +411,18 @@ func (gi *GameInterface) showSelection(prompt string, items []*Item, itemType It
 			break
 		}
 		
-		if index := int(char - '0'); index >= 0 {
-			if itemType == Weapon && index == 0 {
-				GameActionsImpl.UseItem(itemType, 0)
+		if digit := int(char - '0'); digit >= 0 {
+			if itemType == Weapon && digit == 0 {
+				GameActionsImpl.UseItem(itemType, 0) // снять оружие
 				break
-			} else if index > 0 && index <= len(items) {
-				GameActionsImpl.UseItem(itemType, index-1)
+			} else if digit >= 1 && digit <= len(items) {
+				if itemType == Weapon {
+					// Для оружия передаем digit (1,2,3...) а не digit-1
+					GameActionsImpl.UseItem(itemType, digit)
+				} else {
+					// Для остальных предметов передаем digit-1 (0,1,2...)
+					GameActionsImpl.UseItem(itemType, digit-1)
+				}
 				break
 			}
 		}
@@ -398,7 +430,7 @@ func (gi *GameInterface) showSelection(prompt string, items []*Item, itemType It
 }
 
 func (gi *GameInterface) showMenu() {
-	gi.stdscr.Clear()
+	gi.stdscr.Erase()
 	gi.stdscr.Print("=== MENU ===\n\n")
 	gi.stdscr.Print("1. Continue game\n")
 	gi.stdscr.Print("2. Save game\n")
@@ -433,7 +465,7 @@ func (gi *GameInterface) showMenu() {
 }
 
 func (gi *GameInterface) saveGameDialog() {
-	gi.stdscr.Clear()
+	gi.stdscr.Erase()
 	gi.stdscr.Print("Enter filename to save: ")
 	gi.stdscr.Refresh()
 	
@@ -449,7 +481,7 @@ func (gi *GameInterface) saveGameDialog() {
 }
 
 func (gi *GameInterface) loadGameDialog() {
-	gi.stdscr.Clear()
+	gi.stdscr.Erase()
 	gi.stdscr.Print("Enter filename to load: ")
 	gi.stdscr.Refresh()
 	
@@ -465,7 +497,7 @@ func (gi *GameInterface) loadGameDialog() {
 }
 
 func (gi *GameInterface) showHighScores() {
-	gi.stdscr.Clear()
+	gi.stdscr.Erase()
 	gi.stdscr.Print("=== HIGH SCORES ===\n\n")
 	
 	if CurrentGameState.Statistics == nil || len(CurrentGameState.Statistics.BestScores) == 0 {
@@ -518,7 +550,7 @@ func (gi *GameInterface) getInput() string {
 }
 
 func (gi *GameInterface) showMessage(message string) {
-	gi.stdscr.Clear()
+	gi.stdscr.Erase()
 	gi.stdscr.Print(message + "\n\nPress any key to continue...")
 	gi.stdscr.Refresh()
 	
@@ -529,7 +561,7 @@ func (gi *GameInterface) showMessage(message string) {
 }
 
 func (gi *GameInterface) showGameOver() {
-	gi.stdscr.Clear()
+	gi.stdscr.Erase()
 	gi.stdscr.Print("=== GAME OVER ===\n\n")
 	gi.stdscr.Print("Level reached: " + strconv.Itoa(CurrentGameState.CurrentLevel) + "\n")
 	gi.stdscr.Print("Treasures collected: " + strconv.Itoa(CurrentGameState.Player.Treasures) + "\n")
@@ -544,7 +576,7 @@ func (gi *GameInterface) showGameOver() {
 }
 
 func (gi *GameInterface) showVictory() {
-	gi.stdscr.Clear()
+	gi.stdscr.Erase()
 	gi.stdscr.Print("=== VICTORY! ===\n\n")
 	gi.stdscr.Print("You completed all 21 levels!\n")
 	gi.stdscr.Print("Total treasures: " + strconv.Itoa(CurrentGameState.Player.Treasures) + "\n")
@@ -682,4 +714,18 @@ func (gi *GameInterface) initColors() {
 	goncurses.InitPair(5, goncurses.C_BLUE, goncurses.C_BLACK)    // Blue - potions
 	goncurses.InitPair(6, goncurses.C_MAGENTA, goncurses.C_BLACK) // Purple - snake mages, scrolls
 	goncurses.InitPair(7, goncurses.C_WHITE, goncurses.C_BLACK)   // White - ghosts, weapons
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

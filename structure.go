@@ -17,6 +17,8 @@ type GameState struct {
 	CurrentLevel int
 	GameWon      bool
 	GameOver     bool
+
+	Messages []string
 }
 
 // Character представляет игрока

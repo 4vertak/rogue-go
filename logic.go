@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"time"
+	"strconv"
 )
 
 // GameLogic реализует бизнес-логику игры
@@ -70,21 +71,33 @@ func (gl *GameLogic) UseItem(itemType ItemType, index int) {
 	
 	case Weapon:
 		if index == 0 {
+			// Unequip current weapon - кладем в рюкзак, а не на пол
 			if CurrentGameState.Player.CurrentWeapon != nil {
-				item := CurrentGameState.Player.CurrentWeapon
-				item.Position = CurrentGameState.Player.Position
-				CurrentGameState.Items = append(CurrentGameState.Items, item)
+				weapon := CurrentGameState.Player.CurrentWeapon
+				// Добавляем оружие в рюкзак
+				CurrentGameState.Backpack.Weapons = append(CurrentGameState.Backpack.Weapons, weapon)
 				CurrentGameState.Player.CurrentWeapon = nil
+				gl.AddMessage("Weapon unequipped (moved to backpack)")
 			}
 		} else if index-1 < len(CurrentGameState.Backpack.Weapons) {
 			newWeapon := CurrentGameState.Backpack.Weapons[index-1]
+			
+			// If player already has a weapon, put it back in backpack
 			if CurrentGameState.Player.CurrentWeapon != nil {
+				currentWeapon := CurrentGameState.Player.CurrentWeapon
 				CurrentGameState.Backpack.Weapons = append(
 					CurrentGameState.Backpack.Weapons,
-					CurrentGameState.Player.CurrentWeapon,
+					currentWeapon,
 				)
+				gl.AddMessage("Swapped weapons")
+			} else {
+				gl.AddMessage("Equipped weapon: +" + strconv.Itoa(newWeapon.StrengthBoost) + " STR")
 			}
+			
+			// Equip the new weapon
 			CurrentGameState.Player.CurrentWeapon = newWeapon
+			
+			// Remove the equipped weapon from backpack
 			CurrentGameState.Backpack.Weapons = append(
 				CurrentGameState.Backpack.Weapons[:index-1],
 				CurrentGameState.Backpack.Weapons[index:]...,
@@ -93,8 +106,20 @@ func (gl *GameLogic) UseItem(itemType ItemType, index int) {
 	}
 }
 
+func (gl *GameLogic) AddMessage(message string) {
+	if CurrentGameState.Messages == nil {
+		CurrentGameState.Messages = make([]string, 0)
+	}
+	
+	if len(CurrentGameState.Messages) >= 5 {
+		CurrentGameState.Messages = CurrentGameState.Messages[1:]
+	}
+	CurrentGameState.Messages = append(CurrentGameState.Messages, message)
+}
+
 func (gl *GameLogic) PickUpItem() {
 	playerPos := CurrentGameState.Player.Position
+	foundItem := false
 	
 	for i := len(CurrentGameState.Items) - 1; i >= 0; i-- {
 		item := CurrentGameState.Items[i]
@@ -105,9 +130,16 @@ func (gl *GameLogic) PickUpItem() {
 					CurrentGameState.Items[:i],
 					CurrentGameState.Items[i+1:]...,
 				)
+				foundItem = true
 				break
+			} else {
+				gl.AddMessage("Backpack full for this item type!")
 			}
 		}
+	}
+	
+	if !foundItem {
+		gl.AddMessage("No items to pick up here")
 	}
 }
 
@@ -176,6 +208,7 @@ func (gl *GameLogic) GenerateLevel(levelNum int) {
 func (gl *GameLogic) generateRoomsInGrid(level *Level, levelNum int) {
 	gridSize := 3
 	roomCount := 0
+	roomPositions := make(map[[2]int]bool) // Для отслеживания позиций комнат
 	
 	for gridY := 0; gridY < gridSize; gridY++ {
 		for gridX := 0; gridX < gridSize; gridX++ {
@@ -216,6 +249,26 @@ func (gl *GameLogic) generateRoomsInGrid(level *Level, levelNum int) {
 					continue
 				}
 				
+				// Проверяем, не будет ли эта комната создавать двойные коридоры
+				// Проверяем соседние клетки сетки на наличие комнат
+				hasAdjacentRoom := false
+				for _, offset := range [][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}} {
+					adjGridX := gridX + offset[0]
+					adjGridY := gridY + offset[1]
+					
+					if adjGridX >= 0 && adjGridX < gridSize && 
+					   adjGridY >= 0 && adjGridY < gridSize &&
+					   roomPositions[[2]int{adjGridX, adjGridY}] {
+						hasAdjacentRoom = true
+						break
+					}
+				}
+				
+				// Если есть соседняя комната, уменьшаем шанс создания еще одной
+				if hasAdjacentRoom && rand.Intn(100) < 50 {
+					continue
+				}
+				
 				room := &Room{
 					X:      x,
 					Y:      y,
@@ -235,6 +288,7 @@ func (gl *GameLogic) generateRoomsInGrid(level *Level, levelNum int) {
 				}
 				
 				level.Rooms = append(level.Rooms, room)
+				roomPositions[[2]int{gridX, gridY}] = true
 				roomCount++
 			}
 		}
@@ -244,6 +298,11 @@ func (gl *GameLogic) generateRoomsInGrid(level *Level, levelNum int) {
 	for roomCount < 3 {
 		gridX := rand.Intn(gridSize)
 		gridY := rand.Intn(gridSize)
+		
+		// Пропускаем клетки, где уже есть комнаты
+		if roomPositions[[2]int{gridX, gridY}] {
+			continue
+		}
 		
 		roomWidth := 6 + rand.Intn(6)
 		roomHeight := 4 + rand.Intn(4)
@@ -297,13 +356,33 @@ func (gl *GameLogic) generateRoomsInGrid(level *Level, levelNum int) {
 		}
 		
 		level.Rooms = append(level.Rooms, room)
+		roomPositions[[2]int{gridX, gridY}] = true
 		roomCount++
 	}
 	
-	// Set start and exit rooms
+	// Set start and exit rooms - выбираем максимально удаленные комнаты
 	if len(level.Rooms) > 0 {
 		level.StartRoom = level.Rooms[0]
-		level.ExitRoom = level.Rooms[len(level.Rooms)-1]
+		
+		// Находим самую дальнюю комнату от стартовой для выхода
+		maxDistance := 0
+		var exitRoom *Room
+		startCenterX := level.StartRoom.X + level.StartRoom.Width/2
+		startCenterY := level.StartRoom.Y + level.StartRoom.Height/2
+		
+		for _, room := range level.Rooms {
+			roomCenterX := room.X + room.Width/2
+			roomCenterY := room.Y + room.Height/2
+			distance := (roomCenterX-startCenterX)*(roomCenterX-startCenterX) + 
+					(roomCenterY-startCenterY)*(roomCenterY-startCenterY)
+			
+			if distance > maxDistance {
+				maxDistance = distance
+				exitRoom = room
+			}
+		}
+		
+		level.ExitRoom = exitRoom
 		level.StartRoom.IsStart = true
 		level.ExitRoom.IsExit = true
 		
@@ -317,41 +396,100 @@ func (gl *GameLogic) generateRoomsInGrid(level *Level, levelNum int) {
 }
 
 func (gl *GameLogic) connectRoomsWithCorridors(level *Level) {
-	// Connect rooms in the order they were created
-	for i := 0; i < len(level.Rooms)-1; i++ {
-		room1 := level.Rooms[i]
-		room2 := level.Rooms[i+1]
-		
-		// Get center points of rooms
-		startX := room1.X + room1.Width/2
-		startY := room1.Y + room1.Height/2
-		endX := room2.X + room2.Width/2
-		endY := room2.Y + room2.Height/2
-		
-		// Create horizontal corridor first, then vertical
-		gl.createHorizontalCorridor(level, startX, endX, startY)
-		gl.createVerticalCorridor(level, startY, endY, endX)
-	}
+    // Connect rooms in the order they were created (minimum spanning tree approach)
+    for i := 0; i < len(level.Rooms)-1; i++ {
+        room1 := level.Rooms[i]
+        room2 := level.Rooms[i+1]
+        
+        // Get center points of rooms
+        center1X := room1.X + room1.Width/2
+        center1Y := room1.Y + room1.Height/2
+        center2X := room2.X + room2.Width/2
+        center2Y := room2.Y + room2.Height/2
+        
+        // Create L-shaped corridor with proper connection
+        gl.createLShapedCorridor(level, center1X, center1Y, center2X, center2Y)
+        
+        // Add corridor to level structure
+        corridor := &Corridor{
+            Start: Position{X: center1X, Y: center1Y},
+            End:   Position{X: center2X, Y: center2Y},
+            Width: 1,
+        }
+        level.Corridors = append(level.Corridors, corridor)
+    }
+    
+    // Add some random connections for better maze connectivity
+    // but ensure we don't create too many double corridors
+    if len(level.Rooms) > 3 {
+        // Connect random rooms (about 30% chance for additional connections)
+        for i := 0; i < len(level.Rooms); i++ {
+            for j := i + 2; j < len(level.Rooms); j++ {
+                if rand.Intn(100) < 30 { // 30% chance for additional connection
+                    room1 := level.Rooms[i]
+                    room2 := level.Rooms[j]
+                    
+                    center1X := room1.X + room1.Width/2
+                    center1Y := room1.Y + room1.Height/2
+                    center2X := room2.X + room2.Width/2
+                    center2Y := room2.Y + room2.Height/2
+                    
+                    gl.createLShapedCorridor(level, center1X, center1Y, center2X, center2Y)
+                    
+                    corridor := &Corridor{
+                        Start: Position{X: center1X, Y: center1Y},
+                        End:   Position{X: center2X, Y: center2Y},
+                        Width: 1,
+                    }
+                    level.Corridors = append(level.Corridors, corridor)
+                }
+            }
+        }
+    }
+}
+
+func (gl *GameLogic) createLShapedCorridor(level *Level, startX, startY, endX, endY int) {
+    // Choose turning point - either go horizontal first then vertical,
+    // or vertical first then horizontal
+    if rand.Intn(2) == 0 {
+        // Horizontal then vertical
+        turningX := endX
+        
+        gl.createHorizontalCorridor(level, startX, turningX, startY)
+        gl.createVerticalCorridor(level, startY, endY, turningX)
+    } else {
+        // Vertical then horizontal
+        turningY := endY
+        
+        gl.createVerticalCorridor(level, startY, turningY, startX)
+        gl.createHorizontalCorridor(level, startX, endX, turningY)
+    }
 }
 
 func (gl *GameLogic) createHorizontalCorridor(level *Level, startX, endX, y int) {
-	minX, maxX := min(startX, endX), max(startX, endX)
-	for x := minX; x <= maxX; x++ {
-		if x >= 0 && y >= 0 && x < len(level.Grid) && y < len(level.Grid[0]) {
-			level.Grid[x][y].IsWall = false
-			level.Grid[x][y].IsCorridor = true
-		}
-	}
+    minX, maxX := min(startX, endX), max(startX, endX)
+    for x := minX; x <= maxX; x++ {
+        if x >= 0 && y >= 0 && x < len(level.Grid) && y < len(level.Grid[0]) {
+            // Mark as corridor, but don't overwrite rooms
+            if level.Grid[x][y].IsWall {
+                level.Grid[x][y].IsWall = false
+                level.Grid[x][y].IsCorridor = true
+            }
+        }
+    }
 }
 
 func (gl *GameLogic) createVerticalCorridor(level *Level, startY, endY, x int) {
-	minY, maxY := min(startY, endY), max(startY, endY)
-	for y := minY; y <= maxY; y++ {
-		if x >= 0 && y >= 0 && x < len(level.Grid) && y < len(level.Grid[0]) {
-			level.Grid[x][y].IsWall = false
-			level.Grid[x][y].IsCorridor = true
-		}
-	}
+    minY, maxY := min(startY, endY), max(startY, endY)
+    for y := minY; y <= maxY; y++ {
+        if x >= 0 && y >= 0 && x < len(level.Grid) && y < len(level.Grid[0]) {
+            // Mark as corridor, but don't overwrite rooms
+            if level.Grid[x][y].IsWall {
+                level.Grid[x][y].IsWall = false
+                level.Grid[x][y].IsCorridor = true
+            }
+        }
+    }
 }
 
 func (gl *GameLogic) SaveGame(filename string) error {
@@ -379,9 +517,25 @@ func (gl *GameLogic) UpdateGameState() {
 }
 
 func (gl *GameLogic) CheckGameConditions() {
-	if CurrentGameState.Player.Health <= 0 {
-		CurrentGameState.GameOver = true
-	}
+    if CurrentGameState.Player.Health <= 0 {
+        CurrentGameState.GameOver = true
+    }
+    
+    // Проверка победы (нахождение на выходе)
+    playerPos := CurrentGameState.Player.Position
+    if CurrentGameState.Level.ExitRoom != nil {
+        exit := CurrentGameState.Level.ExitRoom
+        exitCenterX := exit.X + exit.Width/2
+        exitCenterY := exit.Y + exit.Height/2
+        
+        if playerPos.X == exitCenterX && playerPos.Y == exitCenterY {
+            if CurrentGameState.CurrentLevel == 21 {
+                CurrentGameState.GameWon = true
+            } else {
+                gl.GenerateLevel(CurrentGameState.CurrentLevel + 1)
+            }
+        }
+    }
 }
 
 func (gl *GameLogic) updateItemEffects() {
@@ -469,11 +623,13 @@ func (gl *GameLogic) applyScrollEffect(scroll *Item) {
 }
 
 func (gl *GameLogic) canMoveTo(x, y int) bool {
-	if x < 0 || y < 0 || x >= len(CurrentGameState.Level.Grid) || y >= len(CurrentGameState.Level.Grid[0]) {
-		return false
-	}
-	
-	return !CurrentGameState.Level.Grid[x][y].IsWall
+    if x < 0 || y < 0 || 
+       x >= len(CurrentGameState.Level.Grid) || 
+       y >= len(CurrentGameState.Level.Grid[0]) {
+        return false
+    }
+    
+    return !CurrentGameState.Level.Grid[x][y].IsWall
 }
 
 func (gl *GameLogic) updateVisibility() {
@@ -554,19 +710,22 @@ func (gl *GameLogic) checkForEnemies() {
 }
 
 func (gl *GameLogic) checkForExit() {
-	playerPos := CurrentGameState.Player.Position
-	if CurrentGameState.Level.ExitRoom != nil {
-		exit := CurrentGameState.Level.ExitRoom
-		if playerPos.X >= exit.X && playerPos.X < exit.X+exit.Width &&
-			playerPos.Y >= exit.Y && playerPos.Y < exit.Y+exit.Height {
-			
-			if CurrentGameState.CurrentLevel == 21 {
-				CurrentGameState.GameWon = true
-			} else {
-				gl.GenerateLevel(CurrentGameState.CurrentLevel + 1)
-			}
-		}
-	}
+    playerPos := CurrentGameState.Player.Position
+    if CurrentGameState.Level.ExitRoom != nil {
+        exit := CurrentGameState.Level.ExitRoom
+        exitCenterX := exit.X + exit.Width/2
+        exitCenterY := exit.Y + exit.Height/2
+        
+        // Проверяем только центральную клетку выхода
+        if playerPos.X == exitCenterX && playerPos.Y == exitCenterY {
+            if CurrentGameState.CurrentLevel == 21 {
+                CurrentGameState.GameWon = true
+            } else {
+                gl.GenerateLevel(CurrentGameState.CurrentLevel + 1)
+                gl.AddMessage("Descending to level " + strconv.Itoa(CurrentGameState.CurrentLevel))
+            }
+        }
+    }
 }
 
 func (gl *GameLogic) isInAttackRange(pos1, pos2 Position) bool {
@@ -800,10 +959,11 @@ func (gl *GameLogic) generateItem(levelNum int) *Item {
 }
 
 func (gl *GameLogic) getRandomPositionInRoom(room *Room) Position {
-	return Position{
-		X: room.X + 1 + rand.Intn(room.Width-2),
-		Y: room.Y + 1 + rand.Intn(room.Height-2),
-	}
+    // Убедимся, что позиция не в стенах комнаты (минимум 1 клетка от края)
+    return Position{
+        X: room.X + 1 + rand.Intn(max(1, room.Width-2)),
+        Y: room.Y + 1 + rand.Intn(max(1, room.Height-2)),
+    }
 }
 
 func (gl *GameLogic) moveEnemies() {
@@ -897,14 +1057,48 @@ func (gl *GameLogic) addToBackpack(item *Item) {
 	case Treasure:
 		CurrentGameState.Backpack.Treasure += item.Value
 		CurrentGameState.Player.Treasures += item.Value
+		gl.AddMessage("Picked up treasure: +" + strconv.Itoa(item.Value) + " gold")
+		
 	case Food:
 		CurrentGameState.Backpack.Food = append(CurrentGameState.Backpack.Food, item)
+		gl.AddMessage("Picked up food: +" + strconv.Itoa(item.HealthBoost) + " HP")
+		
 	case Potion:
 		CurrentGameState.Backpack.Potions = append(CurrentGameState.Backpack.Potions, item)
+		potionType := ""
+		switch item.SubType {
+		case HealthPotion:
+			potionType = "Health Potion"
+		case AgilityPotion:
+			potionType = "Agility Potion"
+		case StrengthPotion:
+			potionType = "Strength Potion"
+		}
+		gl.AddMessage("Picked up " + potionType)
+		
 	case Scroll:
 		CurrentGameState.Backpack.Scrolls = append(CurrentGameState.Backpack.Scrolls, item)
+		scrollType := ""
+		switch item.SubType {
+		case MaxHealthScroll:
+			scrollType = "Max Health Scroll"
+		case AgilityScroll:
+			scrollType = "Agility Scroll"
+		case StrengthScroll:
+			scrollType = "Strength Scroll"
+		}
+		gl.AddMessage("Picked up " + scrollType)
+		
 	case Weapon:
-		CurrentGameState.Backpack.Weapons = append(CurrentGameState.Backpack.Weapons, item)
+		// Автоматически экипируем первое оружие, если у игрока его нет
+		if CurrentGameState.Player.CurrentWeapon == nil {
+			CurrentGameState.Player.CurrentWeapon = item
+			gl.AddMessage("Equipped weapon: +" + strconv.Itoa(item.StrengthBoost) + " STR")
+		} else {
+			// Если уже есть оружие, добавляем в рюкзак
+			CurrentGameState.Backpack.Weapons = append(CurrentGameState.Backpack.Weapons, item)
+			gl.AddMessage("Picked up weapon (in backpack)")
+		}
 	}
 }
 
@@ -947,18 +1141,4 @@ func abs(x int) int {
 		return -x
 	}
 	return x
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
