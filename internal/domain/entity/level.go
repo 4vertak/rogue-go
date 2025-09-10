@@ -11,6 +11,7 @@ const (
 
 type Room struct {
 	X, Y, W, H int
+	IsGone bool
 }
 
 type Level struct {

@@ -35,15 +35,21 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 	var exit entity.Pos
 
 	if len(rooms) > 0 {
-		stair := rooms[rng.Intn(len(rooms))]
-		exit = entity.Pos{X: stair.X + stair.W/2, Y: stair.Y + stair.H/2}
-		tiles[exit.Y][exit.X] = entity.Exit
+		for {
+			startIdxRoom := rng.Intn(len(rooms)) 
+			if ! rooms[startIdxRoom].IsGone {
+				stair := rooms[startIdxRoom]
+				exit = entity.Pos{X: stair.X + stair.W/2, Y: stair.Y + stair.H/2}
+				tiles[exit.Y][exit.X] = entity.Exit
+				break
+			}
+		}
 	}
 
 	// Монстры
 	mobs := []entity.Monster{}
 	for _, rm := range rooms {
-		if rng.Intn(2) == 0 {
+		if rng.Intn(2) == 0  && !rm.IsGone {
 			mobs = append(mobs, entity.Monster{
 				Pos:       entity.Pos{X: rm.X + rng.Intn(rm.W), Y: rm.Y +rng.Intn(rm.H)},
 				Stats:     entity.Stats{HP: 5 + index, MaxHP: 5 + index, STR: 3, DEX: 3},
@@ -57,7 +63,7 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 	// Предметы
 	items := []entity.Item{}
 	for _, rm := range rooms {
-		if rng.Intn(3) == 0 {
+		if rng.Intn(3) == 0 && !rm.IsGone {
 			for {
 				ix := rm.X + rng.Intn(rm.W)
 				iy := rm.Y + rng.Intn(rm.H)
@@ -114,13 +120,17 @@ func generateRoom(rng *rand.Rand, tiles [][]entity.Tile, W int, H int, cfg Confi
 
 			rx := cx + 1 + rng.Intn(maxX)
 			ry := cy + 1 + rng.Intn(maxY)
+			
+			isGone := rng.Intn(100) >= 80 
 
-			room := entity.Room{X: rx, Y: ry, W: rw, H: rh}
+			room := entity.Room{X: rx, Y: ry, W: rw, H: rh, IsGone: isGone}
 			*rooms = append(*rooms, room)
 
-			for y := ry; y < ry+rh && y < H; y++ {
-				for x := rx; x < rx+rw && x < W; x++ {
-					tiles[y][x] = entity.Floor
+			if !isGone {
+				for y := ry; y < ry+rh && y < H; y++ {
+					for x := rx; x < rx+rw && x < W; x++ {
+						tiles[y][x] = entity.Floor
+					}
 				}
 			}
 		}

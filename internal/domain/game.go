@@ -116,10 +116,16 @@ func (g *Game) NewLevel(depth int) {
 
 	// Ставим игрока в случайную комнату
 	if len(level.Rooms) > 0 {
-		start := level.Rooms[rng.Intn(len(level.Rooms))]
-		g.state.Player.Pos = entity.Pos{
-			X: start.X + start.W/2,
-			Y: start.Y + start.H/2,
+		for {
+			startIdxRoom := rng.Intn(len(level.Rooms))
+			if !level.Rooms[startIdxRoom].IsGone {
+				start := level.Rooms[rng.Intn(len(level.Rooms))]
+				g.state.Player.Pos = entity.Pos{
+				X: start.X + start.W/2,
+				Y: start.Y + start.H/2,
+				}
+				break
+			}
 		}
 	}
 

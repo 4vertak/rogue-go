@@ -30,10 +30,17 @@ func NewSession() *GameSession {
 
 	//ставим игрока в центр первой комнаты
 	if len(s.Level.Rooms) > 0 {
-		start := s.Level.Rooms[0]
-		s.Player.Pos = entity.Pos{
-			X: start.X + start.W/2,
-			Y: start.Y + start.H/2,
+		for {
+			startIdxRoom := 0
+			if !s.Level.Rooms[startIdxRoom].IsGone {
+				start := s.Level.Rooms[startIdxRoom]
+				s.Player.Pos = entity.Pos{
+				X: start.X + start.W/2,
+				Y: start.Y + start.H/2,
+				}
+				break
+			}
+			startIdxRoom++
 		}
 	}
 
