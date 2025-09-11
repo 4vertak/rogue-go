@@ -31,9 +31,55 @@ func (g *Game) Run() {
 }
 
 func (g *Game) tick() {
+	//отрисовка
 	g.r.Draw(BuildRenderState(g.state))
-	a := g.i.NextAction()
+	
+	// действия игрока
+	act := g.i.NextAction()
+	applyPlayerAction(g, act)
 
+	// AI монстров
+	runEnemiesAI(g)
+
+	// Бой
+	resolveCombats(g)
+
+	// Сбор предметов
+	collectingItem(g)
+
+	// Переход на новый level
+	if onExit(g) {
+		g.r.Message(fmt.Sprintf("Вы спустились на уровень %d", g.state.Level.Index+1))
+		g.NewLevel(g.state.Level.Index + 1) // генерируем новый ehjdty
+		return
+	}
+	
+}
+
+func (g *Game) NewLevel(depth int) {
+	rng := gen.NowRNG()
+	level := gen.BuildLevel(rng, depth, gen.DefaultConfig())
+
+	// Ставим игрока в случайную комнату
+	if len(level.Rooms) > 0 {
+		for {
+			startIdxRoom := rng.Intn(len(level.Rooms))
+			if !level.Rooms[startIdxRoom].IsGone {
+				start := level.Rooms[rng.Intn(len(level.Rooms))]
+				g.state.Player.Pos = entity.Pos{
+				X: start.X + start.W/2,
+				Y: start.Y + start.H/2,
+				}
+				break
+			}
+		}
+	}
+
+	g.state.Level = level
+}
+
+func applyPlayerAction(g *Game, a Action) {
+	
 	switch a.Type {
 	case MoveUp:
 		rules.MovePlayer(&g.state.Player, 0, -1, &g.state.Level)
@@ -52,13 +98,15 @@ func (g *Game) tick() {
 	default:
 		g.r.Message("Неизвестное действие")
 	}
+}
 
-	// AI монстров
+func runEnemiesAI(g *Game) {
 	for mi := range g.state.Level.Mobs {
 		rules.MoveMonster(&g.state.Level.Mobs[mi], g.state.Player, &g.state.Level)
 	}
+}
 
-	// Бой (игрок vs монстры)
+func resolveCombats(g *Game) {
 	for mi := range g.state.Level.Mobs {
 		mob := &g.state.Level.Mobs[mi]
 		if mob.Pos == g.state.Player.Pos {
@@ -89,8 +137,9 @@ func (g *Game) tick() {
 			}
 		}
 	}
+}
 
-	// Сбор предметов
+func collectingItem(g *Game) {
 	for i := 0; i < len(g.state.Level.Items); i++ {
 		item := g.state.Level.Items[i]
 		if item.Pos == g.state.Player.Pos {
@@ -101,33 +150,8 @@ func (g *Game) tick() {
 			}
 		}
 	}
-
-	// Переход на новый level
-	if g.state.Level.Tiles[g.state.Player.Pos.Y][g.state.Player.Pos.X] == entity.Exit {
-		g.r.Message(fmt.Sprintf("Вы спустились на уровень %d", g.state.Level.Index+1))
-		g.NewLevel(g.state.Level.Index + 1) // генерируем новый ehjdty
-		return
-	}
 }
 
-func (g *Game) NewLevel(depth int) {
-	rng := gen.NowRNG()
-	level := gen.BuildLevel(rng, depth, gen.DefaultConfig())
-
-	// Ставим игрока в случайную комнату
-	if len(level.Rooms) > 0 {
-		for {
-			startIdxRoom := rng.Intn(len(level.Rooms))
-			if !level.Rooms[startIdxRoom].IsGone {
-				start := level.Rooms[rng.Intn(len(level.Rooms))]
-				g.state.Player.Pos = entity.Pos{
-				X: start.X + start.W/2,
-				Y: start.Y + start.H/2,
-				}
-				break
-			}
-		}
-	}
-
-	g.state.Level = level
+func onExit(g *Game) bool {
+	return  g.state.Level.Tiles[g.state.Player.Pos.Y][g.state.Player.Pos.X] == entity.Exit
 }
