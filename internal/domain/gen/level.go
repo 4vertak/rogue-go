@@ -1,10 +1,13 @@
 package gen
 
 import (
+	"math"
+	"sort"
 	"math/rand"
 	"time"
 
 	"github.com/4vertak/rogue-go/internal/domain/entity"
+	"github.com/4vertak/rogue-go/internal/domain/rules"
 )
 
 type Config struct{ CellW, CellH, MinRW, MinRH int }
@@ -120,7 +123,7 @@ func generateRoom(rng *rand.Rand, tiles [][]entity.Tile, W int, H int, cfg Confi
 
 			rx := cx + 1 + rng.Intn(maxX)
 			ry := cy + 1 + rng.Intn(maxY)
-			
+
 			isGone := rng.Intn(100) >= 80 
 
 			room := entity.Room{X: rx, Y: ry, W: rw, H: rh, IsGone: isGone}
@@ -137,21 +140,109 @@ func generateRoom(rng *rand.Rand, tiles [][]entity.Tile, W int, H int, cfg Confi
 	}
 }
 
+
 func generatePassage(rng *rand.Rand, tiles [][]entity.Tile, rooms []entity.Room) {
-	for gy := 0; gy < 3; gy++ {
-		for gx := 0; gx < 3; gx++ {
-			idx := gy*3 + gx
-			if idx >= len(rooms) {
-				continue
-			}
-			if gx < 2 && idx+1 < len(rooms) {
-				connectRooms(rng, tiles, rooms[idx], rooms[idx+1])
-			}
-			if gy < 2 && idx+3 < len(rooms) {
-				connectRooms(rng, tiles, rooms[idx], rooms[idx+3])
-			}
-		}
-	}
+ // Собираем информацию о комнатах
+ type RoomInfo struct {
+  Index    int
+  GX, GY   int
+  Room     entity.Room
+ }
+ var validRooms []RoomInfo
+
+ for i, room := range rooms {
+  if !room.IsGone {
+   gx := i % 3
+   gy := i / 3
+   validRooms = append(validRooms, RoomInfo{
+    Index: i,
+    GX:    gx,
+    GY:    gy,
+    Room:  room,
+   })
+  }
+ }
+
+ if len(validRooms) <= 1 {
+  return
+ }
+
+ // Создаем ребра между соседними комнатами
+ type Edge struct {
+  U, V    int
+  Weight  float64
+ }
+ var edges []Edge
+
+ for i := 0; i < len(validRooms); i++ {
+  for j := i + 1; j < len(validRooms); j++ {
+   ri, rj := validRooms[i], validRooms[j]
+   dx := rules.Abs(ri.GX - rj.GX)
+   dy := rules.Abs(ri.GY - rj.GY)
+  
+   // Соединяем только соседние комнаты в сетке
+   if (dx == 1 && dy == 0) || (dx == 0 && dy == 1) {
+    ciX, ciY := ri.Room.X+ri.Room.W/2, ri.Room.Y+ri.Room.H/2
+    cjX, cjY := rj.Room.X+rj.Room.W/2, rj.Room.Y+rj.Room.H/2
+    weight := math.Sqrt(float64((ciX-cjX)*(ciX-cjX) + (ciY-cjY)*(ciY-cjY)))
+    edges = append(edges, Edge{U: i, V: j, Weight: weight})
+   }
+  }
+ }
+
+ // Алгоритм Крускала
+ sort.Slice(edges, func(i, j int) bool {
+  return edges[i].Weight < edges[j].Weight
+ })
+
+ parent := make([]int, len(validRooms))
+ for i := range parent {
+  parent[i] = i
+ }
+
+ var find func(int) int
+ find = func(x int) int {
+  if parent[x] != x {
+   parent[x] = find(parent[x])
+  }
+  return parent[x]
+ }
+
+ union := func(x, y int) {
+  parent[find(x)] = find(y)
+ }
+
+ var mstEdges []Edge
+ for _, e := range edges {
+  if find(e.U) != find(e.V) {
+   mstEdges = append(mstEdges, e)
+   union(e.U, e.V)
+  }
+ }
+
+ // Добавляем случайные соединения (20% вероятность)
+ for _, e := range edges {
+  if rng.Float64() < 0.2 {
+   // Проверяем, нет ли уже этого соединения в MST
+   found := false
+   for _, me := range mstEdges {
+    if (me.U == e.U && me.V == e.V) || (me.U == e.V && me.V == e.U) {
+     found = true
+     break
+    }
+   }
+   if !found {
+    mstEdges = append(mstEdges, e)
+   }
+  }
+ }
+
+ // Создаем коридоры для выбранных ребер
+ for _, e := range mstEdges {
+  roomA := validRooms[e.U].Room
+  roomB := validRooms[e.V].Room
+  connectRooms(rng, tiles, roomA, roomB)
+ }
 }
 
 
