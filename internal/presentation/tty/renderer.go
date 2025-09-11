@@ -32,29 +32,50 @@ func (r *Renderer) Draw(rs *domain.RenderState) {
 	lvl := rs.Level
 
 	maxY, maxX := r.stdscr.MaxYX()
-
 	shiftX := (maxX - lvl.W) / 2
 	shiftY := (maxY - lvl.H) / 2
 
 	for y := 0; y < lvl.H; y++ {
 		for x := 0; x < lvl.W; x++ {
-			ch := tileChar(lvl.Tiles[y][x])
+			pos := entity.Pos{X: x, Y: y}
+			var ch rune
 
-			for _, mob := range lvl.Mobs {
-				if mob.Pos.X == x && mob.Pos.Y == y {
-					ch = mob.Symbol
-					break
-				}
-			}
-			for _, item := range lvl.Items {
-				if item.Pos.X == x && item.Pos.Y == y {
-					ch = '*'
-					break
-				}
-			}
+			// Проверяем, видимость
+			if rs.Visible[pos] {
+				// Видимые тйлы отобража
+				ch = tileChar(lvl.Tiles[y][x])
 
-			if rs.Player.Pos.X == x && rs.Player.Pos.Y == y {
-				ch = '@'
+				// Отображаем обьекты только если они видимы
+				for _, mob := range lvl.Mobs {
+					if mob.Pos.X == x && mob.Pos.Y == y {
+						ch = mob.Symbol
+						break
+					}
+				}
+				for _, item := range lvl.Items {
+					if item.Pos.X == x && item.Pos.Y == y {
+						ch = '*'
+						break
+					}
+				}
+				if rs.Player.Pos.X == x && rs.Player.Pos.Y == y {
+					ch = '@'
+				}
+			} else if lvl.Explored[y][x] {
+				// Прошли, внп зоны видимости будут затемненными потом цветом будум зтменять
+				switch lvl.Tiles[y][x] {
+				case entity.Wall:
+					ch = '#'
+				case entity.Floor:
+					ch = '.'
+				case entity.Exit:
+					ch = '>'
+				default:
+					ch = ' '
+				}
+			} else {
+				// пусто
+				ch = ' '
 			}
 
 			r.stdscr.MoveAddChar(shiftY+y, shiftX+x, goncurses.Char(ch))
@@ -65,12 +86,6 @@ func (r *Renderer) Draw(rs *domain.RenderState) {
 	statsText := fmt.Sprintf("HP %d/%d  STR %d  DEX %d  GOLD %d  LVL %d",
 		rs.Player.Stats.HP, rs.Player.Stats.MaxHP, rs.Player.Stats.STR, rs.Player.Stats.DEX, rs.Player.Gold, rs.Level.Index)
 	r.stdscr.MovePrint(statsLine, shiftX, statsText)
-
-	// for i, m := range rs.Log {
-	// 	if statsLine+1+i < maxY {
-	// 		r.stdscr.MovePrint(statsLine+1+i, shiftX, m)
-	// 	}
-	// }
 
 	r.stdscr.Refresh()
 }
@@ -160,7 +175,7 @@ func (r *Renderer) StartScreen() {
 	shiftX := (maxX - width) / 2
 	shiftY := (maxY - height) / 2
 
-	r.stdscr.Clear()
+	r.stdscr.Erase()
 
 	for i, s := range strings {
 		r.stdscr.MovePrint(shiftY+i, shiftX, s)
@@ -172,7 +187,7 @@ func (r *Renderer) StartScreen() {
 
 	r.stdscr.Refresh()
 	r.stdscr.GetChar()
-	r.stdscr.Clear()
+	r.stdscr.Erase()
 }
 
 // меню
@@ -202,7 +217,7 @@ func (r *Renderer) MenuScreen(currentLine int, store *repo.JSONRepo) int {
 	shiftX := (maxX - width) / 2
 	shiftY := (maxY - height) / 2
 
-	r.stdscr.Clear()
+	r.stdscr.Erase()
 
 	for i, line := range title {
 		r.stdscr.MovePrint(shiftY+i, shiftX, line)
@@ -283,7 +298,7 @@ func (r *Renderer) DeadScreen() {
 	shiftX := (maxX - width) / 2
 	shiftY := (maxY - height) / 2
 
-	r.stdscr.Clear()
+	r.stdscr.Erase()
 
 	for i, s := range strings {
 		r.stdscr.MovePrint(shiftY+i, shiftX, s)
@@ -295,7 +310,7 @@ func (r *Renderer) DeadScreen() {
 
 	r.stdscr.Refresh()
 	r.stdscr.GetChar()
-	r.stdscr.Clear()
+	r.stdscr.Erase()
 }
 
 // завершения игры
@@ -321,7 +336,7 @@ func (r *Renderer) EndgameScreen() {
 	shiftX := (maxX - width) / 2
 	shiftY := (maxY - height) / 2
 
-	r.stdscr.Clear()
+	r.stdscr.Erase()
 
 	for i, s := range strings {
 		r.stdscr.MovePrint(shiftY+i, shiftX, s)
@@ -333,7 +348,7 @@ func (r *Renderer) EndgameScreen() {
 
 	r.stdscr.Refresh()
 	r.stdscr.GetChar()
-	r.stdscr.Clear()
+	r.stdscr.Erase()
 }
 
 // Таблицу рекордов
@@ -355,7 +370,7 @@ func (r *Renderer) DisplayScoreboard(scores []domain.ScoreEntry) {
 	shiftX := (maxX - totalWidth) / 2
 	shiftY := (maxY - (sizeArray + 4)) / 2
 
-	r.stdscr.Clear()
+	r.stdscr.Erase()
 
 	title := "HIGH SCORES"
 	r.stdscr.MovePrint(shiftY, (maxX-len(title))/2, title)
@@ -403,5 +418,5 @@ func (r *Renderer) DisplayScoreboard(scores []domain.ScoreEntry) {
 		}
 	}
 
-	r.stdscr.Clear()
+	r.stdscr.Erase()
 }

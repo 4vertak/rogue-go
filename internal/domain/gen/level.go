@@ -2,8 +2,8 @@ package gen
 
 import (
 	"math"
-	"sort"
 	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/4vertak/rogue-go/internal/domain/entity"
@@ -12,7 +12,7 @@ import (
 
 type Config struct{ CellW, CellH, MinRW, MinRH int }
 
-func DefaultConfig() Config { return Config{CellW: 10, CellH: 6, MinRW: 4, MinRH: 3} }
+func DefaultConfig() Config { return Config{CellW: 24, CellH: 8, MinRW: 4, MinRH: 3} }
 
 func RNG(seed int64) *rand.Rand { return rand.New(rand.NewSource(seed)) }
 func NowRNG() *rand.Rand        { return RNG(time.Now().UnixNano()) }
@@ -28,10 +28,14 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 		}
 	}
 
+	explored := make([][]bool, H) //инициализация непросмотренные клетки
+	for y := range explored {
+		explored[y] = make([]bool, W)
+	}
+
 	rooms := []entity.Room{}
 	generateRoom(rng, tiles, W, H, cfg, &rooms)
 
-	// Соединение соседних комнат
 	generatePassage(rng, tiles, rooms)
 
 	// Лестница вниз
@@ -39,8 +43,8 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 
 	if len(rooms) > 0 {
 		for {
-			startIdxRoom := rng.Intn(len(rooms)) 
-			if ! rooms[startIdxRoom].IsGone {
+			startIdxRoom := rng.Intn(len(rooms))
+			if !rooms[startIdxRoom].IsGone {
 				stair := rooms[startIdxRoom]
 				exit = entity.Pos{X: stair.X + stair.W/2, Y: stair.Y + stair.H/2}
 				tiles[exit.Y][exit.X] = entity.Exit
@@ -52,9 +56,9 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 	// Монстры
 	mobs := []entity.Monster{}
 	for _, rm := range rooms {
-		if rng.Intn(2) == 0  && !rm.IsGone {
+		if rng.Intn(2) == 0 && !rm.IsGone {
 			mobs = append(mobs, entity.Monster{
-				Pos:       entity.Pos{X: rm.X + rng.Intn(rm.W), Y: rm.Y +rng.Intn(rm.H)},
+				Pos:       entity.Pos{X: rm.X + rng.Intn(rm.W), Y: rm.Y + rng.Intn(rm.H)},
 				Stats:     entity.Stats{HP: 5 + index, MaxHP: 5 + index, STR: 3, DEX: 3},
 				Type:      "zombie",
 				Hostility: 5,
@@ -70,7 +74,7 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 			for {
 				ix := rm.X + rng.Intn(rm.W)
 				iy := rm.Y + rng.Intn(rm.H)
-				if  exit.X != ix && exit.Y != iy {
+				if exit.X != ix && exit.Y != iy {
 					items = append(items, entity.Item{
 						Type:   "Food",
 						Health: 5,
@@ -83,14 +87,15 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 	}
 
 	return entity.Level{
-		Index: index,
-		W:     W,
-		H:     H,
-		Tiles: tiles,
-		Rooms: rooms,
-		Exit:  exit,
-		Mobs:  mobs,
-		Items: items,
+		Index:    index,
+		W:        W,
+		H:        H,
+		Tiles:    tiles,
+		Explored: explored,
+		Rooms:    rooms,
+		Exit:     exit,
+		Mobs:     mobs,
+		Items:    items,
 	}
 }
 
@@ -124,7 +129,7 @@ func generateRoom(rng *rand.Rand, tiles [][]entity.Tile, W int, H int, cfg Confi
 			rx := cx + 1 + rng.Intn(maxX)
 			ry := cy + 1 + rng.Intn(maxY)
 
-			isGone := rng.Intn(100) >= 80 
+			isGone := rng.Intn(100) >= 90
 
 			room := entity.Room{X: rx, Y: ry, W: rw, H: rh, IsGone: isGone}
 			*rooms = append(*rooms, room)
@@ -140,118 +145,146 @@ func generateRoom(rng *rand.Rand, tiles [][]entity.Tile, W int, H int, cfg Confi
 	}
 }
 
-
 func generatePassage(rng *rand.Rand, tiles [][]entity.Tile, rooms []entity.Room) {
- // Собираем информацию о комнатах
- type RoomInfo struct {
-  Index    int
-  GX, GY   int
-  Room     entity.Room
- }
- var validRooms []RoomInfo
+	type RoomInfo struct {
+		Index  int
+		GX, GY int
+		Room   *entity.Room
+	}
 
- for i, room := range rooms {
-  if !room.IsGone {
-   gx := i % 3
-   gy := i / 3
-   validRooms = append(validRooms, RoomInfo{
-    Index: i,
-    GX:    gx,
-    GY:    gy,
-    Room:  room,
-   })
-  }
- }
+	var allRooms []RoomInfo
+	for i := range rooms {
+		if rooms[i].IsGone {
+			continue
+		}
+		gx := i % 3
+		gy := i / 3
+		allRooms = append(allRooms, RoomInfo{
+			Index: i, GX: gx, GY: gy, Room: &rooms[i],
+		})
+	}
 
- if len(validRooms) <= 1 {
-  return
- }
+	if len(allRooms) <= 1 {
+		return
+	}
 
- // Создаем ребра между соседними комнатами
- type Edge struct {
-  U, V    int
-  Weight  float64
- }
- var edges []Edge
+	type Edge struct {
+		U, V   int
+		Weight float64
+	}
 
- for i := 0; i < len(validRooms); i++ {
-  for j := i + 1; j < len(validRooms); j++ {
-   ri, rj := validRooms[i], validRooms[j]
-   dx := rules.Abs(ri.GX - rj.GX)
-   dy := rules.Abs(ri.GY - rj.GY)
-  
-   // Соединяем только соседние комнаты в сетке
-   if (dx == 1 && dy == 0) || (dx == 0 && dy == 1) {
-    ciX, ciY := ri.Room.X+ri.Room.W/2, ri.Room.Y+ri.Room.H/2
-    cjX, cjY := rj.Room.X+rj.Room.W/2, rj.Room.Y+rj.Room.H/2
-    weight := math.Sqrt(float64((ciX-cjX)*(ciX-cjX) + (ciY-cjY)*(ciY-cjY)))
-    edges = append(edges, Edge{U: i, V: j, Weight: weight})
-   }
-  }
- }
+	// рёбра между соседними комнатами
+	var edges []Edge
+	for i := 0; i < len(allRooms); i++ {
+		for j := i + 1; j < len(allRooms); j++ {
+			ri, rj := allRooms[i], allRooms[j]
+			dx := rules.Abs(ri.GX - rj.GX)
+			dy := rules.Abs(ri.GY - rj.GY)
+			if (dx == 1 && dy == 0) || (dx == 0 && dy == 1) {
+				ciX, ciY := ri.Room.X+ri.Room.W/2, ri.Room.Y+ri.Room.H/2
+				cjX, cjY := rj.Room.X+rj.Room.W/2, rj.Room.Y+rj.Room.H/2
+				weight := math.Sqrt(float64((ciX-cjX)*(ciX-cjX) + (ciY-cjY)*(ciY-cjY)))
+				edges = append(edges, Edge{U: i, V: j, Weight: weight})
+			}
+		}
+	}
 
- // Алгоритм Крускала
- sort.Slice(edges, func(i, j int) bool {
-  return edges[i].Weight < edges[j].Weight
- })
+	// сортировка рёбер по dtce
+	sort.Slice(edges, func(i, j int) bool { return edges[i].Weight < edges[j].Weight })
 
- parent := make([]int, len(validRooms))
- for i := range parent {
-  parent[i] = i
- }
+	// DSU
+	parent := make([]int, len(allRooms))
+	for i := range parent {
+		parent[i] = i
+	}
+	var find func(int) int
+	find = func(x int) int {
+		if parent[x] != x {
+			parent[x] = find(parent[x])
+		}
+		return parent[x]
+	}
+	union := func(x, y int) { parent[find(x)] = find(y) }
 
- var find func(int) int
- find = func(x int) int {
-  if parent[x] != x {
-   parent[x] = find(parent[x])
-  }
-  return parent[x]
- }
+	var mstEdges []Edge
+	for _, e := range edges {
+		if find(e.U) != find(e.V) {
+			mstEdges = append(mstEdges, e)
+			union(e.U, e.V)
+		}
+	}
 
- union := func(x, y int) {
-  parent[find(x)] = find(y)
- }
+	// проверяем связность и  соединяем оставшиеся комнаты
+	for {
+		comps := make(map[int][]int)
+		for i := range allRooms {
+			root := find(i)
+			comps[root] = append(comps[root], i)
+		}
+		if len(comps) <= 1 {
+			break
+		}
 
- var mstEdges []Edge
- for _, e := range edges {
-  if find(e.U) != find(e.V) {
-   mstEdges = append(mstEdges, e)
-   union(e.U, e.V)
-  }
- }
+		// находим ближайшие комнаты
+		var bestEdge *Edge
+		bestDist := math.MaxFloat64
+		var roots []int
+		for k := range comps {
+			roots = append(roots, k)
+		}
+		for _, a := range comps[roots[0]] {
+			for _, b := range comps[roots[1]] {
+				ax, ay := allRooms[a].Room.X+allRooms[a].Room.W/2, allRooms[a].Room.Y+allRooms[a].Room.H/2
+				bx, by := allRooms[b].Room.X+allRooms[b].Room.W/2, allRooms[b].Room.Y+allRooms[b].Room.H/2
+				dist := math.Sqrt(float64((ax-bx)*(ax-bx) + (ay-by)*(ay-by)))
+				if dist < bestDist {
+					bestDist = dist
+					bestEdge = &Edge{U: a, V: b, Weight: dist}
+				}
+			}
+		}
 
- // Добавляем случайные соединения (20% вероятность)
- for _, e := range edges {
-  if rng.Float64() < 0.2 {
-   // Проверяем, нет ли уже этого соединения в MST
-   found := false
-   for _, me := range mstEdges {
-    if (me.U == e.U && me.V == e.V) || (me.U == e.V && me.V == e.U) {
-     found = true
-     break
-    }
-   }
-   if !found {
-    mstEdges = append(mstEdges, e)
-   }
-  }
- }
+		if bestEdge != nil {
+			mstEdges = append(mstEdges, *bestEdge)
+			union(bestEdge.U, bestEdge.V)
+		}
+	}
 
- // Создаем коридоры для выбранных ребер
- for _, e := range mstEdges {
-  roomA := validRooms[e.U].Room
-  roomB := validRooms[e.V].Room
-  connectRooms(rng, tiles, roomA, roomB)
- }
+	for _, e := range mstEdges {
+		connectRooms(rng, tiles, *allRooms[e.U].Room, *allRooms[e.V].Room)
+	}
 }
 
+func randomDoor(rng *rand.Rand, room entity.Room) (int, int) {
+	if room.W < 6 || room.H < 6 {
+		return room.X + room.W/2, room.Y + room.H/2
+	}
+
+	side := rng.Intn(4)
+	switch side {
+	case 0: // верх
+		return room.X + 2 + rng.Intn(max(1, room.W-4)), room.Y
+	case 1: // низ
+		return room.X + 2 + rng.Intn(max(1, room.W-4)), room.Y + room.H - 1
+	case 2: // левая
+		return room.X, room.Y + 2 + rng.Intn(max(1, room.H-4))
+	case 3: // правя
+		return room.X + room.W - 1, room.Y + 2 + rng.Intn(max(1, room.H-4))
+	}
+	return room.X, room.Y
+}
 
 func connectRooms(rng *rand.Rand, tiles [][]entity.Tile, a, b entity.Room) {
 	if a.W == 0 || b.W == 0 {
 		return
 	}
-	ax, ay := a.X+a.W/2, a.Y+a.H/2
-	bx, by := b.X+b.W/2, b.Y+b.H/2
+
+	ax, ay := randomDoor(rng, a)
+	bx, by := randomDoor(rng, b)
+
+	tiles[ay][ax] = entity.Floor
+	tiles[by][bx] = entity.Floor
+
 	if rng.Intn(2) == 0 {
 		carveH(tiles, ax, bx, ay)
 		carveV(tiles, ay, by, bx)

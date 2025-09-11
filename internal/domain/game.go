@@ -33,7 +33,7 @@ func (g *Game) Run() {
 func (g *Game) tick() {
 	//отрисовка
 	g.r.Draw(BuildRenderState(g.state))
-	
+
 	// действия игрока
 	act := g.i.NextAction()
 	applyPlayerAction(g, act)
@@ -53,7 +53,7 @@ func (g *Game) tick() {
 		g.NewLevel(g.state.Level.Index + 1) // генерируем новый ehjdty
 		return
 	}
-	
+
 }
 
 func (g *Game) NewLevel(depth int) {
@@ -67,8 +67,8 @@ func (g *Game) NewLevel(depth int) {
 			if !level.Rooms[startIdxRoom].IsGone {
 				start := level.Rooms[rng.Intn(len(level.Rooms))]
 				g.state.Player.Pos = entity.Pos{
-				X: start.X + start.W/2,
-				Y: start.Y + start.H/2,
+					X: start.X + start.W/2,
+					Y: start.Y + start.H/2,
 				}
 				break
 			}
@@ -79,7 +79,7 @@ func (g *Game) NewLevel(depth int) {
 }
 
 func applyPlayerAction(g *Game, a Action) {
-	
+
 	switch a.Type {
 	case MoveUp:
 		rules.MovePlayer(&g.state.Player, 0, -1, &g.state.Level)
@@ -153,5 +153,5 @@ func collectingItem(g *Game) {
 }
 
 func onExit(g *Game) bool {
-	return  g.state.Level.Tiles[g.state.Player.Pos.Y][g.state.Player.Pos.X] == entity.Exit
+	return g.state.Level.Tiles[g.state.Player.Pos.Y][g.state.Player.Pos.X] == entity.Exit
 }
