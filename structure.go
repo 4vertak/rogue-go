@@ -45,6 +45,8 @@ type Enemy struct {
 	Position    Position
 	IsVisible   bool
 	Pattern     MovementPattern
+	moveCooldown int // Для паттерна TwoStep
+	hasBeenHit bool // Для вампиров
 }
 
 // Item представляет предмет

@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 	"strconv"
+	"sort"
 )
 
 // GameLogic реализует бизнес-логику игры
@@ -223,288 +224,192 @@ func (gl *GameLogic) GenerateLevel(levelNum int) {
 }
 
 func (gl *GameLogic) generateRoomsInGrid(level *Level, levelNum int) {
-	gridSize := 3
-	roomCount := 0
-	roomPositions := make(map[[2]int]bool) // Для отслеживания позиций комнат
-	
-	for gridY := 0; gridY < gridSize; gridY++ {
-		for gridX := 0; gridX < gridSize; gridX++ {
-			// 70% chance to create a room in this grid cell
-			if rand.Intn(100) < 70 {
-				roomWidth := 6 + rand.Intn(6)
-				roomHeight := 4 + rand.Intn(4)
-				
-				// Calculate position within grid cell
-				cellWidth := len(level.Grid) / gridSize
-				cellHeight := len(level.Grid[0]) / gridSize
-				
-				// Ensure we have enough space for the room
-				minX := gridX*cellWidth + 2
-				minY := gridY*cellHeight + 2
-				maxX := (gridX+1)*cellWidth - roomWidth - 2
-				maxY := (gridY+1)*cellHeight - roomHeight - 2
-				
-				// Check if we have valid coordinates
-				if maxX <= minX || maxY <= minY {
-					continue
-				}
-				x := minX + rand.Intn(maxX-minX)
-				y := minY + rand.Intn(maxY-minY)
-				
-				// Ensure room is within bounds
-				if x < 1 { x = 1 }
-				if y < 1 { y = 1 }
-				if x+roomWidth >= len(level.Grid)-1 { 
-					roomWidth = len(level.Grid) - x - 2 
-				}
-				if y+roomHeight >= len(level.Grid[0])-1 { 
-					roomHeight = len(level.Grid[0]) - y - 2 
-				}
-				
-				// Ensure minimum room size
-				if roomWidth < 3 || roomHeight < 3 {
-					continue
-				}
-				
-				// Проверяем, не будет ли эта комната создавать двойные коридоры
-				// Проверяем соседние клетки сетки на наличие комнат
-				hasAdjacentRoom := false
-				for _, offset := range [][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}} {
-					adjGridX := gridX + offset[0]
-					adjGridY := gridY + offset[1]
-					
-					if adjGridX >= 0 && adjGridX < gridSize && 
-					   adjGridY >= 0 && adjGridY < gridSize &&
-					   roomPositions[[2]int{adjGridX, adjGridY}] {
-						hasAdjacentRoom = true
-						break
-					}
-				}
-				
-				// Если есть соседняя комната, уменьшаем шанс создания еще одной
-				if hasAdjacentRoom && rand.Intn(100) < 50 {
-					continue
-				}
-				
-				room := &Room{
-					X:      x,
-					Y:      y,
-					Width:  roomWidth,
-					Height: roomHeight,
-					Enemies: make([]*Enemy, 0),
-					Items:   make([]*Item, 0),
-				}
-				
-				// Create the room
-				for rx := x; rx < x+roomWidth; rx++ {
-					for ry := y; ry < y+roomHeight; ry++ {
-						if rx >= 0 && ry >= 0 && rx < len(level.Grid) && ry < len(level.Grid[0]) {
-							level.Grid[rx][ry].IsWall = false
-						}
-					}
-				}
-				
-				level.Rooms = append(level.Rooms, room)
-				roomPositions[[2]int{gridX, gridY}] = true
-				roomCount++
-			}
-		}
-	}
-	
-	// Ensure we have at least 3 rooms
-	for roomCount < 3 {
-		gridX := rand.Intn(gridSize)
-		gridY := rand.Intn(gridSize)
-		
-		// Пропускаем клетки, где уже есть комнаты
-		if roomPositions[[2]int{gridX, gridY}] {
-			continue
-		}
-		
-		roomWidth := 6 + rand.Intn(6)
-		roomHeight := 4 + rand.Intn(4)
-		
-		cellWidth := len(level.Grid) / gridSize
-		cellHeight := len(level.Grid[0]) / gridSize
-		
-		// Ensure we have enough space for the room
-		minX := gridX*cellWidth + 2
-		minY := gridY*cellHeight + 2
-		maxX := (gridX+1)*cellWidth - roomWidth - 2
-		maxY := (gridY+1)*cellHeight - roomHeight - 2
-		
-		// Check if we have valid coordinates
-		if maxX <= minX || maxY <= minY {
-			continue
-		}
-		
-		x := minX + rand.Intn(maxX-minX)
-		y := minY + rand.Intn(maxY-minY)
-		
-		if x < 1 { x = 1 }
-		if y < 1 { y = 1 }
-		if x+roomWidth >= len(level.Grid)-1 { 
-			roomWidth = len(level.Grid) - x - 2 
-		}
-		if y+roomHeight >= len(level.Grid[0])-1 { 
-			roomHeight = len(level.Grid[0]) - y - 2 
-		}
-		
-		// Ensure minimum room size
-		if roomWidth < 3 || roomHeight < 3 {
-			continue
-		}
-		
-		room := &Room{
-			X:      x,
-			Y:      y,
-			Width:  roomWidth,
-			Height: roomHeight,
-			Enemies: make([]*Enemy, 0),
-			Items:   make([]*Item, 0),
-		}
-		
-		for rx := x; rx < x+roomWidth; rx++ {
-			for ry := y; ry < y+roomHeight; ry++ {
-				if rx >= 0 && ry >= 0 && rx < len(level.Grid) && ry < len(level.Grid[0]) {
-					level.Grid[rx][ry].IsWall = false
-				}
-			}
-		}
-		
-		level.Rooms = append(level.Rooms, room)
-		roomPositions[[2]int{gridX, gridY}] = true
-		roomCount++
-	}
-	
-	// Set start and exit rooms - выбираем максимально удаленные комнаты
-	if len(level.Rooms) > 0 {
-		level.StartRoom = level.Rooms[0]
-		
-		// Находим самую дальнюю комнату от стартовой для выхода
-		maxDistance := 0
-		var exitRoom *Room
-		startCenterX := level.StartRoom.X + level.StartRoom.Width/2
-		startCenterY := level.StartRoom.Y + level.StartRoom.Height/2
-		
-		for _, room := range level.Rooms {
-			roomCenterX := room.X + room.Width/2
-			roomCenterY := room.Y + room.Height/2
-			distance := (roomCenterX-startCenterX)*(roomCenterX-startCenterX) + 
-					(roomCenterY-startCenterY)*(roomCenterY-startCenterY)
-			
-			if distance > maxDistance {
-				maxDistance = distance
-				exitRoom = room
-			}
-		}
-		
-		level.ExitRoom = exitRoom
-		level.StartRoom.IsStart = true
-		level.ExitRoom.IsExit = true
-		
-		// Mark exit position
-		exitX := level.ExitRoom.X + level.ExitRoom.Width/2
-		exitY := level.ExitRoom.Y + level.ExitRoom.Height/2
-		if exitX < len(level.Grid) && exitY < len(level.Grid[0]) {
-			level.Grid[exitX][exitY].IsWall = false
-		}
-	}
-}
-
-func (gl *GameLogic) connectRoomsWithCorridors(level *Level) {
-    // Connect rooms in the order they were created (minimum spanning tree approach)
-    for i := 0; i < len(level.Rooms)-1; i++ {
-        room1 := level.Rooms[i]
-        room2 := level.Rooms[i+1]
-        
-        // Get center points of rooms
-        center1X := room1.X + room1.Width/2
-        center1Y := room1.Y + room1.Height/2
-        center2X := room2.X + room2.Width/2
-        center2Y := room2.Y + room2.Height/2
-        
-        // Create L-shaped corridor with proper connection
-        gl.createLShapedCorridor(level, center1X, center1Y, center2X, center2Y)
-        
-        // Add corridor to level structure
-        corridor := &Corridor{
-            Start: Position{X: center1X, Y: center1Y},
-            End:   Position{X: center2X, Y: center2Y},
-            Width: 1,
-        }
-        level.Corridors = append(level.Corridors, corridor)
-    }
+    gridSize := 3
+    roomsCreated := 0
     
-    // Add some random connections for better maze connectivity
-    // but ensure we don't create too many double corridors
-    if len(level.Rooms) > 3 {
-        // Connect random rooms (about 30% chance for additional connections)
-        for i := 0; i < len(level.Rooms); i++ {
-            for j := i + 2; j < len(level.Rooms); j++ {
-                if rand.Intn(100) < 30 { // 30% chance for additional connection
-                    room1 := level.Rooms[i]
-                    room2 := level.Rooms[j]
-                    
-                    center1X := room1.X + room1.Width/2
-                    center1Y := room1.Y + room1.Height/2
-                    center2X := room2.X + room2.Width/2
-                    center2Y := room2.Y + room2.Height/2
-                    
-                    gl.createLShapedCorridor(level, center1X, center1Y, center2X, center2Y)
-                    
-                    corridor := &Corridor{
-                        Start: Position{X: center1X, Y: center1Y},
-                        End:   Position{X: center2X, Y: center2Y},
-                        Width: 1,
+    // Гарантированно создаем минимум 3 комнат
+    for roomsCreated < 3 {
+        for gridY := 0; gridY < gridSize && roomsCreated < 3; gridY++ {
+            for gridX := 0; gridX < gridSize && roomsCreated < 3; gridX++ {
+                // 70% chance to create a room in this grid cell
+                if roomsCreated < 3 || rand.Intn(100) < 70 {
+                    if gl.createRoomInGridCell(level, gridX, gridY, gridSize) { // Убираем levelNum
+                        roomsCreated++
                     }
-                    level.Corridors = append(level.Corridors, corridor)
                 }
             }
         }
     }
+    
+    // Устанавливаем стартовую и выходную комнаты
+    if len(level.Rooms) > 0 {
+        level.StartRoom = level.Rooms[0]
+        
+        // Находим самую дальнюю комнату от стартовой для выхода
+        maxDistance := 0
+        var exitRoom *Room
+        startCenterX := level.StartRoom.X + level.StartRoom.Width/2
+        startCenterY := level.StartRoom.Y + level.StartRoom.Height/2
+        
+        for _, room := range level.Rooms {
+            roomCenterX := room.X + room.Width/2
+            roomCenterY := room.Y + room.Height/2
+            distance := (roomCenterX-startCenterX)*(roomCenterX-startCenterX) + 
+                      (roomCenterY-startCenterY)*(roomCenterY-startCenterY)
+            
+            if distance > maxDistance {
+                maxDistance = distance
+                exitRoom = room
+            }
+        }
+        
+        level.ExitRoom = exitRoom
+        level.StartRoom.IsStart = true
+        level.ExitRoom.IsExit = true
+    }
+}
+
+func (gl *GameLogic) createRoomInGridCell(level *Level, gridX, gridY, gridSize int) bool {
+    roomWidth := 6 + rand.Intn(6)
+    roomHeight := 4 + rand.Intn(4)
+    
+    cellWidth := len(level.Grid) / gridSize
+    cellHeight := len(level.Grid[0]) / gridSize
+    
+    minX := gridX*cellWidth + 2
+    minY := gridY*cellHeight + 2
+    maxX := (gridX+1)*cellWidth - roomWidth - 2
+    maxY := (gridY+1)*cellHeight - roomHeight - 2
+    
+    if maxX <= minX || maxY <= minY {
+        return false
+    }
+    
+    x := minX + rand.Intn(maxX-minX)
+    y := minY + rand.Intn(maxY-minY)
+    
+    if x < 1 { x = 1 }
+    if y < 1 { y = 1 }
+    if x+roomWidth >= len(level.Grid)-1 { 
+        roomWidth = len(level.Grid) - x - 2 
+    }
+    if y+roomHeight >= len(level.Grid[0])-1 { 
+        roomHeight = len(level.Grid[0]) - y - 2 
+    }
+    
+    if roomWidth < 3 || roomHeight < 3 {
+        return false
+    }
+    
+    room := &Room{
+        X:      x,
+        Y:      y,
+        Width:  roomWidth,
+        Height: roomHeight,
+        Enemies: make([]*Enemy, 0),
+        Items:   make([]*Item, 0),
+    }
+    
+    for rx := x; rx < x+roomWidth; rx++ {
+        for ry := y; ry < y+roomHeight; ry++ {
+            if rx >= 0 && ry >= 0 && rx < len(level.Grid) && ry < len(level.Grid[0]) {
+                level.Grid[rx][ry].IsWall = false
+            }
+        }
+    }
+    
+    level.Rooms = append(level.Rooms, room)
+    return true
+}
+
+func (gl *GameLogic) connectRoomsWithCorridors(level *Level) {
+    if len(level.Rooms) < 2 {
+        return
+    }
+    
+    // Сортируем комнаты для последовательного соединения
+    gl.sortRoomsByPosition(level)
+    
+    // Соединяем комнаты последовательно
+    for i := 0; i < len(level.Rooms)-1; i++ {
+        gl.connectTwoRooms(level, level.Rooms[i], level.Rooms[i+1])
+    }
+    
+    // Добавляем дополнительные соединения для обеспечения связности
+    extraConnections := rand.Intn(len(level.Rooms)/2) + 1
+    for i := 0; i < extraConnections; i++ {
+        room1 := level.Rooms[rand.Intn(len(level.Rooms))]
+        room2 := level.Rooms[rand.Intn(len(level.Rooms))]
+        if room1 != room2 {
+            gl.connectTwoRooms(level, room1, room2)
+        }
+    }
+}
+
+func (gl *GameLogic) sortRoomsByPosition(level *Level) {
+    // Сортируем комнаты по их положению (слева направо, сверху вниз)
+    sort.Slice(level.Rooms, func(i, j int) bool {
+        room1 := level.Rooms[i]
+        room2 := level.Rooms[j]
+        
+        // Сначала по Y, потом по X
+        if room1.Y != room2.Y {
+            return room1.Y < room2.Y
+        }
+        return room1.X < room2.X
+    })
+}
+
+func (gl *GameLogic) connectTwoRooms(level *Level, room1, room2 *Room) {
+    // Центры комнат
+    center1X := room1.X + room1.Width/2
+    center1Y := room1.Y + room1.Height/2
+    center2X := room2.X + room2.Width/2
+    center2Y := room2.Y + room2.Height/2
+    
+    // Создаем L-образный коридор
+    gl.createLShapedCorridor(level, center1X, center1Y, center2X, center2Y)
 }
 
 func (gl *GameLogic) createLShapedCorridor(level *Level, startX, startY, endX, endY int) {
-    // Choose turning point - either go horizontal first then vertical,
-    // or vertical first then horizontal
+    // Определяем направление движения
     if rand.Intn(2) == 0 {
-        // Horizontal then vertical
-        turningX := endX
-        
-        gl.createHorizontalCorridor(level, startX, turningX, startY)
-        gl.createVerticalCorridor(level, startY, endY, turningX)
+        // Сначала горизонтально, затем вертикально
+        midX := startX
+        midY := endY
+        gl.createHorizontalCorridor(level, startX, endX, midY)
+        gl.createVerticalCorridor(level, startY, endY, midX)
     } else {
-        // Vertical then horizontal
-        turningY := endY
-        
-        gl.createVerticalCorridor(level, startY, turningY, startX)
-        gl.createHorizontalCorridor(level, startX, endX, turningY)
+        // Сначала вертикально, затем горизонтально
+        midX := endX
+        midY := startY
+        gl.createVerticalCorridor(level, startY, endY, midX)
+        gl.createHorizontalCorridor(level, startX, endX, midY)
     }
 }
 
 func (gl *GameLogic) createHorizontalCorridor(level *Level, startX, endX, y int) {
-    minX, maxX := min(startX, endX), max(startX, endX)
-    for x := minX; x <= maxX; x++ {
-        if x >= 0 && y >= 0 && x < len(level.Grid) && y < len(level.Grid[0]) {
-            // Mark as corridor, but don't overwrite rooms
-            if level.Grid[x][y].IsWall {
-                level.Grid[x][y].IsWall = false
-                level.Grid[x][y].IsCorridor = true
-            }
+    if startX > endX {
+        startX, endX = endX, startX
+    }
+    
+    for x := startX; x <= endX; x++ {
+        if x >= 0 && x < len(level.Grid) && y >= 0 && y < len(level.Grid[0]) {
+            level.Grid[x][y].IsWall = false
+            level.Grid[x][y].IsCorridor = true
         }
     }
 }
 
 func (gl *GameLogic) createVerticalCorridor(level *Level, startY, endY, x int) {
-    minY, maxY := min(startY, endY), max(startY, endY)
-    for y := minY; y <= maxY; y++ {
-        if x >= 0 && y >= 0 && x < len(level.Grid) && y < len(level.Grid[0]) {
-            // Mark as corridor, but don't overwrite rooms
-            if level.Grid[x][y].IsWall {
-                level.Grid[x][y].IsWall = false
-                level.Grid[x][y].IsCorridor = true
-            }
+    if startY > endY {
+        startY, endY = endY, startY
+    }
+    
+    for y := startY; y <= endY; y++ {
+        if x >= 0 && x < len(level.Grid) && y >= 0 && y < len(level.Grid[0]) {
+            level.Grid[x][y].IsWall = false
+            level.Grid[x][y].IsCorridor = true
         }
     }
 }
@@ -778,6 +683,30 @@ func (gl *GameLogic) resolveCombat(attacker interface{}, defender interface{}) {
     case *Character:
         dAgility = d.Agility
     }
+
+    // Специальная логика для вампиров - отнимают максимальное здоровье
+    if defenderChar, ok := defender.(*Character); ok {
+        if attackerEnemy, ok := attacker.(*Enemy); ok && attackerEnemy.Type == Vampire {
+            // Вампир отнимает максимальное здоровье
+            maxHealthReduction := rand.Intn(3) + 1 // 1-3 единицы
+            defenderChar.MaxHealth = max(1, defenderChar.MaxHealth-maxHealthReduction)
+            defenderChar.Health = min(defenderChar.Health, defenderChar.MaxHealth)
+            
+            gl.AddMessage("Vampire drained your max health! -" + strconv.Itoa(maxHealthReduction) + " MaxHP")
+        }
+    }
+    
+    // Первый удар по вампиру всегда промах
+    if _, ok := attacker.(*Character); ok {
+        if defenderEnemy, ok := defender.(*Enemy); ok && defenderEnemy.Type == Vampire {
+            if !defenderEnemy.hasBeenHit {
+                // Первый удар промахивается
+                gl.AddMessage("First strike missed the vampire!")
+                defenderEnemy.hasBeenHit = true
+                return
+            }
+        }
+    }
     
     // Расчет шанса попадания
     hitChance := 70 + (aAgility - dAgility)
@@ -790,6 +719,16 @@ func (gl *GameLogic) resolveCombat(attacker interface{}, defender interface{}) {
         case *Enemy:
             d.Health -= damage  // ВРАГ получает урон
             CurrentGameState.GameSession.HitsLanded++
+            
+            // Логика для змей-магов - шанс усыпить игрока
+            if _, ok := attacker.(*Character); ok && d.Type == SnakeMage {
+                if rand.Intn(100) < 30 { // 30% chance to sleep
+                    // Усыпление на один ход
+                    gl.AddMessage("Snake Mage put you to sleep for one turn!")
+                    // Здесь можно добавить логику пропуска хода игрока
+                }
+            }
+            
         case *Character:
             d.Health -= damage  // ИГРОК получает урон  
             CurrentGameState.GameSession.HitsTaken++
@@ -840,6 +779,8 @@ func (gl *GameLogic) generateEnemy(levelNum int) *Enemy {
 			Hostility: baseHostility,
 			IsVisible: true,
 			Pattern:   Random,
+			moveCooldown: 0,
+			hasBeenHit: false,
 		}
 	case Vampire:
 		return &Enemy{
@@ -850,6 +791,8 @@ func (gl *GameLogic) generateEnemy(levelNum int) *Enemy {
 			Hostility: baseHostility * 4 / 3,
 			IsVisible: true,
 			Pattern:   Chase,
+			moveCooldown: 0,
+			hasBeenHit: false,
 		}
 	case Ghost:
 		return &Enemy{
@@ -860,6 +803,8 @@ func (gl *GameLogic) generateEnemy(levelNum int) *Enemy {
 			Hostility: baseHostility / 2,
 			IsVisible: false,
 			Pattern:   Teleport,
+			moveCooldown: 0,
+			hasBeenHit: false,
 		}
 	case Ogre:
 		return &Enemy{
@@ -870,6 +815,8 @@ func (gl *GameLogic) generateEnemy(levelNum int) *Enemy {
 			Hostility: baseHostility,
 			IsVisible: true,
 			Pattern:   TwoStep,
+			moveCooldown: 0,
+			hasBeenHit: false,
 		}
 	case SnakeMage:
 		return &Enemy{
@@ -880,6 +827,8 @@ func (gl *GameLogic) generateEnemy(levelNum int) *Enemy {
 			Hostility: baseHostility * 3 / 2,
 			IsVisible: true,
 			Pattern:   Diagonal,
+			moveCooldown: 0,
+			hasBeenHit: false,
 		}
 	default:
 		return &Enemy{
@@ -890,6 +839,8 @@ func (gl *GameLogic) generateEnemy(levelNum int) *Enemy {
 			Hostility: baseHostility,
 			IsVisible: true,
 			Pattern:   Random,
+			moveCooldown: 0,
+			hasBeenHit: false,
 		}
 	}
 }
@@ -983,16 +934,29 @@ func (gl *GameLogic) getRandomPositionInRoom(room *Room) Position {
     }
 }
 
+// Дополнительные функции для enemy movement patterns
 func (gl *GameLogic) moveEnemies() {
     for _, enemy := range CurrentGameState.Enemies {
         if gl.shouldChasePlayer(enemy) {
             gl.chasePlayer(enemy)
         } else {
-            gl.moveRandomly(enemy)
+            switch enemy.Pattern {
+            case Random:
+                gl.moveRandomly(enemy)
+            case Teleport:
+                gl.teleportEnemy(enemy)
+            case Diagonal:
+                gl.moveDiagonally(enemy)
+            case TwoStep:
+                gl.moveTwoStep(enemy)
+            default:
+                gl.moveRandomly(enemy)
+            }
         }
         
+        // Проверка боя после движения
         playerPos := CurrentGameState.Player.Position
-        if enemy.Position.X == playerPos.X && enemy.Position.Y == playerPos.Y {            
+        if enemy.Position.X == playerPos.X && enemy.Position.Y == playerPos.Y {
             gl.resolveCombat(enemy, CurrentGameState.Player)
             
             if CurrentGameState.Player.Health <= 0 {
@@ -1000,6 +964,62 @@ func (gl *GameLogic) moveEnemies() {
             }
         }
     }
+}
+
+func (gl *GameLogic) teleportEnemy(enemy *Enemy) {
+    // Призраки телепортируются случайным образом
+    if enemy.Type == Ghost && rand.Intn(100) < 30 { // 30% chance to teleport
+        if CurrentGameState.Level != nil {
+            // Ищем случайную комнату
+            if len(CurrentGameState.Level.Rooms) > 0 {
+                room := CurrentGameState.Level.Rooms[rand.Intn(len(CurrentGameState.Level.Rooms))]
+                enemy.Position = gl.getRandomPositionInRoom(room)
+                
+                // Случайная видимость для призрака
+                enemy.IsVisible = rand.Intn(100) < 50
+            }
+        }
+    } else {
+        gl.moveRandomly(enemy)
+    }
+}
+
+func (gl *GameLogic) moveDiagonally(enemy *Enemy) {
+    // Змей-маг двигается по диагонали
+    directions := []struct{ dx, dy int }{
+        {1, 1}, {1, -1}, {-1, 1}, {-1, -1},
+    }
+    
+    dir := directions[rand.Intn(len(directions))]
+    newX := enemy.Position.X + dir.dx
+    newY := enemy.Position.Y + dir.dy
+    
+    if gl.canMoveTo(newX, newY) {
+        enemy.Position.X = newX
+        enemy.Position.Y = newY
+    }
+}
+
+func (gl *GameLogic) moveTwoStep(enemy *Enemy) {
+    // Огр делает два шага за один ход
+    if enemy.moveCooldown > 0 {
+        enemy.moveCooldown--
+        return
+    }
+    
+    // Два шага в случайном направлении
+    for i := 0; i < 2; i++ {
+        dx, dy := rand.Intn(3)-1, rand.Intn(3)-1
+        newX := enemy.Position.X + dx
+        newY := enemy.Position.Y + dy
+        
+        if gl.canMoveTo(newX, newY) {
+            enemy.Position.X = newX
+            enemy.Position.Y = newY
+        }
+    }
+    
+    enemy.moveCooldown = 1 // Отдых после движения
 }
 
 func (gl *GameLogic) shouldChasePlayer(enemy *Enemy) bool {
