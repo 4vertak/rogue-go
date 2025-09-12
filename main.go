@@ -24,6 +24,7 @@ func main() {
 	showMainMenu(ui)
 }
 
+// main.go - исправим строку 70
 func initializeGame() {
 	// Создаем начальное состояние игры
 	CurrentGameState = &GameState{
@@ -58,21 +59,21 @@ func initializeGame() {
 		CurrentLevel: 1,
 		GameWon:      false,
 		GameOver:     false,
-		Messages:     make([]string, 0), // Инициализируем сообщения
-		StatusMessages: make([]string, 0), // Инициализируем сообщения статуса
+		Messages:     make([]string, 0),
+		StatusMessages: make([]string, 0),
+		SleepTurns:   0,
 	}
 
 	// Генерация первого уровня
 	GameActionsImpl.GenerateLevel(1)
 	
 	// Добавляем стартовое сообщение
-	GameActionsImpl.(*GameLogic).AddMessage("Welcome to Go Rogue! Move with WASD")
+	GameActionsImpl.AddMessage("Welcome to Go Rogue! Move with WASD")
 }
 
 func showMainMenu(ui *GameInterface) {
-	ui.stdscr.Print("=== YES ===\n")
 	for {
-		ui.stdscr.Clear()
+		ui.stdscr.Erase()
 		ui.stdscr.Print("=== GO ROGUELIKE ===\n\n")
 		ui.stdscr.Print("1. New Game\n")
 		ui.stdscr.Print("2. Load Game\n")
@@ -114,7 +115,7 @@ func startNewGame(ui *GameInterface) {
 }
 
 func loadGame(ui *GameInterface) {
-	ui.stdscr.Clear()
+	ui.stdscr.Erase()
 	ui.stdscr.Print("Enter filename to load: ")
 	ui.stdscr.Refresh()
 
@@ -135,7 +136,7 @@ func loadGame(ui *GameInterface) {
 }
 
 func showHighScores(ui *GameInterface) {
-	ui.stdscr.Clear()
+	ui.stdscr.Erase()
 	ui.stdscr.Print("=== HIGH SCORES ===\n\n")
 
 	if CurrentGameState.Statistics == nil || len(CurrentGameState.Statistics.BestScores) == 0 {
@@ -157,7 +158,7 @@ func showHighScores(ui *GameInterface) {
 		ui.stdscr.Print("-----+-------+-----------+--------\n")
 		
 		for i, score := range sortedScores {
-			if i >= 10 { // Показываем топ-10
+			if i >= 10 {
 				break
 			}
 			ui.stdscr.Printf("%4d | %5d | %9d | %7d\n", 
@@ -167,7 +168,10 @@ func showHighScores(ui *GameInterface) {
 
 	ui.stdscr.Print("\nPress any key to return...")
 	ui.stdscr.Refresh()
+	// Устанавливаем блокирующий ввод
+    ui.stdscr.Timeout(-1)
 	ui.stdscr.GetChar()
+	ui.stdscr.Timeout(100) // Возвращаем неблокирующий ввод
 }
 
 func addToHighScores() {
@@ -198,7 +202,6 @@ func addToHighScores() {
 }
 
 func saveStatistics() {
-	// Сохраняем статистику в файл
 	if CurrentGameState.Statistics == nil {
 		return
 	}
@@ -212,10 +215,8 @@ func saveStatistics() {
 }
 
 func loadStatistics() {
-	// Загружаем статистику из файла
 	data, err := os.ReadFile("statistics.json")
 	if err != nil {
-		// Если файла нет, создаем пустую статистику
 		CurrentGameState.Statistics = &Statistics{
 			BestScores: make([]*GameSession, 0),
 		}

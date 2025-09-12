@@ -17,6 +17,7 @@ type GameState struct {
 	CurrentLevel int
 	GameWon      bool
 	GameOver     bool
+	SleepTurns   int // Для эффекта усыпления от змея-мага
 
 	Messages []string
 	StatusMessages []string  // Отдельные сообщения для статуса
@@ -47,6 +48,9 @@ type Enemy struct {
 	Pattern     MovementPattern
 	moveCooldown int // Для паттерна TwoStep
 	hasBeenHit bool // Для вампиров
+	attackCooldown int // Для огров после атаки
+	teleportCooldown int // Для призраков
+	invisibilityCooldown int // Для призраков
 }
 
 // Item представляет предмет
@@ -59,6 +63,7 @@ type Item struct {
 	StrengthBoost  int
 	Value          int
 	Position       Position
+	Name		   string
 }
 
 // Level представляет игровой уровень
@@ -211,7 +216,17 @@ type GameActions interface {
 	// Обновление состояния
 	UpdateGameState()
 	CheckGameConditions()
+
+	AddMessage(message string)
+	TryExitLevel()
 }
 
 var CurrentGameState *GameState
 var GameActionsImpl GameActions
+
+func max(a, b int) int {
+    if a > b {
+        return a
+    }
+    return b
+}
