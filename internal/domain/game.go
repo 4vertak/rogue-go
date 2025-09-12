@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/4vertak/rogue-go/internal/domain/entity"
-	"github.com/4vertak/rogue-go/internal/domain/gen"
 	"github.com/4vertak/rogue-go/internal/domain/rules"
 )
 
@@ -57,25 +56,7 @@ func (g *Game) tick() {
 }
 
 func (g *Game) NewLevel(depth int) {
-	rng := gen.NowRNG()
-	level := gen.BuildLevel(rng, depth, gen.DefaultConfig())
-
-	// Ставим игрока в случайную комнату
-	if len(level.Rooms) > 0 {
-		for {
-			startIdxRoom := rng.Intn(len(level.Rooms))
-			if !level.Rooms[startIdxRoom].IsGone {
-				start := level.Rooms[rng.Intn(len(level.Rooms))]
-				g.state.Player.Pos = entity.Pos{
-					X: start.X + start.W/2,
-					Y: start.Y + start.H/2,
-				}
-				break
-			}
-		}
-	}
-
-	g.state.Level = level
+	g.state.NextLevel()
 }
 
 func applyPlayerAction(g *Game, a Action) {

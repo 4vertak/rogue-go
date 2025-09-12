@@ -70,6 +70,8 @@ func (r *Renderer) Draw(rs *domain.RenderState) {
 					ch = '.'
 				case entity.Exit:
 					ch = '>'
+				case entity.Door:
+					ch = '+'
 				default:
 					ch = ' '
 				}
@@ -138,6 +140,8 @@ func tileChar(t entity.Tile) rune {
 		return '.'
 	case entity.Exit:
 		return '>'
+	case entity.Door:
+		return '+'
 	default:
 		return ' '
 	}

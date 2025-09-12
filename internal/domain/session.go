@@ -25,25 +25,8 @@ type ScoreEntry struct {
 func NewSession() *GameSession {
 	s := &GameSession{Seed: time.Now().UnixNano()}
 	s.Player = entity.DefaultPlayer()
-	// стартовый левел
 	s.Level = gen.BuildLevel(gen.RNG(s.Seed), 1, gen.DefaultConfig())
-
-	//ставим игрока в центр первой комнаты
-	if len(s.Level.Rooms) > 0 {
-		for {
-			startIdxRoom := 0
-			if !s.Level.Rooms[startIdxRoom].IsGone {
-				start := s.Level.Rooms[startIdxRoom]
-				s.Player.Pos = entity.Pos{
-				X: start.X + start.W/2,
-				Y: start.Y + start.H/2,
-				}
-				break
-			}
-			startIdxRoom++
-		}
-	}
-
+	s.Player.Pos = s.Level.PlayerStartPos
 	s.Log = append(s.Log, "Начало игры")
 	return s
 }
@@ -51,6 +34,7 @@ func NewSession() *GameSession {
 func (s *GameSession) NextLevel() {
 	newIndex := s.Level.Index + 1
 	s.Level = gen.BuildLevel(gen.RNG(time.Now().UnixNano()), newIndex, gen.DefaultConfig())
+	s.Player.Pos = s.Level.PlayerStartPos
 	s.Log = append(s.Log, "Спуск на уровень ", string(rune(newIndex)))
 }
 

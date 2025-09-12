@@ -20,10 +20,11 @@ func NowRNG() *rand.Rand        { return RNG(time.Now().UnixNano()) }
 func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 	W := cfg.CellW*3 + 1
 	H := cfg.CellH*3 + 1
+
 	tiles := make([][]entity.Tile, H)
-	for y := 0; y < H; y++ {
+	for y := range H {
 		tiles[y] = make([]entity.Tile, W)
-		for x := 0; x < W; x++ {
+		for x := range W {
 			tiles[y][x] = entity.Wall
 		}
 	}
@@ -38,25 +39,44 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 
 	generatePassage(rng, tiles, rooms)
 
+	var validRooms []entity.Room
+	for _, room := range rooms {
+		if !room.IsGone {
+			validRooms = append(validRooms, room)
+		}
+	}
+
 	// Лестница вниз
 	var exit entity.Pos
 
-	if len(rooms) > 0 {
-		for {
-			startIdxRoom := rng.Intn(len(rooms))
-			if !rooms[startIdxRoom].IsGone {
-				stair := rooms[startIdxRoom]
-				exit = entity.Pos{X: stair.X + stair.W/2, Y: stair.Y + stair.H/2}
-				tiles[exit.Y][exit.X] = entity.Exit
-				break
+	exitRoom := validRooms[rng.Intn(len(validRooms))]
+	exit = entity.Pos{X: exitRoom.X + exitRoom.W/2, Y: exitRoom.Y + exitRoom.H/2}
+	tiles[exit.Y][exit.X] = entity.Exit
+
+	var playerStartPos entity.Pos
+	if len(validRooms) > 1 {
+		var startRooms []entity.Room
+		for _, room := range validRooms {
+			if room.X != exitRoom.X || room.Y != exitRoom.Y {
+				startRooms = append(startRooms, room)
 			}
+		}
+		startRoom := startRooms[rng.Intn(len(startRooms))]
+		playerStartPos = entity.Pos{
+			X: startRoom.X + startRoom.W/2,
+			Y: startRoom.Y + startRoom.H/2,
+		}
+	} else {
+		playerStartPos = entity.Pos{
+			X: validRooms[0].X + validRooms[0].W/2,
+			Y: validRooms[0].Y + validRooms[0].H/2,
 		}
 	}
 
 	// Монстры
 	mobs := []entity.Monster{}
-	for _, rm := range rooms {
-		if rng.Intn(2) == 0 && !rm.IsGone {
+	for _, rm := range validRooms {
+		if rng.Intn(2) == 0 {
 			mobs = append(mobs, entity.Monster{
 				Pos:       entity.Pos{X: rm.X + rng.Intn(rm.W), Y: rm.Y + rng.Intn(rm.H)},
 				Stats:     entity.Stats{HP: 5 + index, MaxHP: 5 + index, STR: 3, DEX: 3},
@@ -69,8 +89,8 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 
 	// Предметы
 	items := []entity.Item{}
-	for _, rm := range rooms {
-		if rng.Intn(3) == 0 && !rm.IsGone {
+	for _, rm := range validRooms {
+		if rng.Intn(3) == 0 {
 			for {
 				ix := rm.X + rng.Intn(rm.W)
 				iy := rm.Y + rng.Intn(rm.H)
@@ -87,15 +107,16 @@ func BuildLevel(rng *rand.Rand, index int, cfg Config) entity.Level {
 	}
 
 	return entity.Level{
-		Index:    index,
-		W:        W,
-		H:        H,
-		Tiles:    tiles,
-		Explored: explored,
-		Rooms:    rooms,
-		Exit:     exit,
-		Mobs:     mobs,
-		Items:    items,
+		Index:          index,
+		W:              W,
+		H:              H,
+		Tiles:          tiles,
+		Explored:       explored,
+		Rooms:          rooms,
+		PlayerStartPos: playerStartPos,
+		Exit:           exit,
+		Mobs:           mobs,
+		Items:          items,
 	}
 }
 
@@ -129,7 +150,7 @@ func generateRoom(rng *rand.Rand, tiles [][]entity.Tile, W int, H int, cfg Confi
 			rx := cx + 1 + rng.Intn(maxX)
 			ry := cy + 1 + rng.Intn(maxY)
 
-			isGone := rng.Intn(100) >= 90
+			isGone := rng.Intn(100) >= 80
 
 			room := entity.Room{X: rx, Y: ry, W: rw, H: rh, IsGone: isGone}
 			*rooms = append(*rooms, room)
@@ -261,17 +282,28 @@ func randomDoor(rng *rand.Rand, room entity.Room) (int, int) {
 	}
 
 	side := rng.Intn(4)
+	var doorX, doorY int
+
+	minX := room.X + 2
+	maxX := room.X + room.W - 3
+	minY := room.Y + 2
+	maxY := room.Y + room.H - 3
+
 	switch side {
 	case 0: // верх
-		return room.X + 2 + rng.Intn(max(1, room.W-4)), room.Y
+		doorX = minX + rng.Intn(max(1, maxX-minX+1))
+		doorY = room.Y
 	case 1: // низ
-		return room.X + 2 + rng.Intn(max(1, room.W-4)), room.Y + room.H - 1
+		doorX = minX + rng.Intn(max(1, maxX-minX+1))
+		doorY = room.Y + room.H - 1
 	case 2: // левая
-		return room.X, room.Y + 2 + rng.Intn(max(1, room.H-4))
-	case 3: // правя
-		return room.X + room.W - 1, room.Y + 2 + rng.Intn(max(1, room.H-4))
+		doorY = minY + rng.Intn(max(1, maxY-minY+1))
+		doorX = room.X
+	case 3: // правая
+		doorY = minY + rng.Intn(max(1, maxY-minY+1))
+		doorX = room.X + room.W - 1
 	}
-	return room.X, room.Y
+	return doorX, doorY
 }
 
 func connectRooms(rng *rand.Rand, tiles [][]entity.Tile, a, b entity.Room) {
@@ -279,18 +311,18 @@ func connectRooms(rng *rand.Rand, tiles [][]entity.Tile, a, b entity.Room) {
 		return
 	}
 
-	ax, ay := randomDoor(rng, a)
-	bx, by := randomDoor(rng, b)
+	aDoorX, aDoorY := randomDoor(rng, a)
+	bDoorX, bDoorY := randomDoor(rng, b)
 
-	tiles[ay][ax] = entity.Floor
-	tiles[by][bx] = entity.Floor
+	tiles[aDoorY][aDoorX] = entity.Door
+	tiles[bDoorY][bDoorX] = entity.Door
 
 	if rng.Intn(2) == 0 {
-		carveH(tiles, ax, bx, ay)
-		carveV(tiles, ay, by, bx)
+		carveH(tiles, aDoorX, bDoorX, aDoorY)
+		carveV(tiles, aDoorY, bDoorY, bDoorX)
 	} else {
-		carveV(tiles, ay, by, ax)
-		carveH(tiles, ax, bx, by)
+		carveV(tiles, aDoorY, bDoorY, aDoorX)
+		carveH(tiles, aDoorX, bDoorX, bDoorY)
 	}
 }
 

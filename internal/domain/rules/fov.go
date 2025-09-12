@@ -12,19 +12,19 @@ func VisibleTiles(level *entity.Level, from entity.Pos, maxDist int, blocks func
 			p := entity.Pos{X: x, Y: y}
 			dx := x - from.X
 			dy := y - from.Y
-			// Проверяем, находится ли точка в пределах максимальной дистанции
+			// Проверяем, находится ли точка в пределах максимальной видимости
 			if dx*dx+dy*dy > maxDist*maxDist {
 				continue
 			}
 			// Получаем линию от начальной точки до текущей точки
 			line := bresenhamLine(from, p)
-			// Проверяем видимость каждой точки в линии
+			// проверка видимости каждой точки в линии
 			for i, point := range line {
 				if i == 0 {
 					continue
 				}
 				vis[point] = true
-				// Если точка блокирует обзор, прерываем луч
+				// Если точка блокирует обзор - прерываем луч
 				if blocks(point) {
 					break
 				}
@@ -34,7 +34,7 @@ func VisibleTiles(level *entity.Level, from entity.Pos, maxDist int, blocks func
 	return vis
 }
 
-// Функция построения линии по алгоритму БрЭзенхэма
+// алгорит БрЭзенхэма
 func bresenhamLine(from, to entity.Pos) []entity.Pos {
 	var points []entity.Pos
 	x0, y0 := from.X, from.Y

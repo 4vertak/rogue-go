@@ -13,7 +13,6 @@ type RenderState struct {
 }
 
 func BuildRenderState(s *GameSession) *RenderState {
-	// Вычисляем видимые
 	visible := rules.VisibleTiles(&s.Level, s.Player.Pos, 5, func(p entity.Pos) bool {
 		// Проверяем, находится ли позиция в пределах уровня
 		if p.X < 0 || p.X >= s.Level.W || p.Y < 0 || p.Y >= s.Level.H {
@@ -22,7 +21,6 @@ func BuildRenderState(s *GameSession) *RenderState {
 		return s.Level.Tiles[p.Y][p.X] == entity.Wall
 	})
 
-	// Обновляем исследованные
 	for pos := range visible {
 		if pos.Y >= 0 && pos.Y < s.Level.H && pos.X >= 0 && pos.X < s.Level.W {
 			s.Level.Explored[pos.Y][pos.X] = true
