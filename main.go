@@ -63,6 +63,10 @@ func initializeGame() {
 		Messages:     make([]string, 0),
 		StatusMessages: make([]string, 0),
 		SleepTurns:   0,
+		RenderMode:  Render2D,
+        PlayerAngle: 0,
+        PlayerDir:   PositionF{X: -1, Y: 0},
+        PlayerPlane: PositionF{X: 0, Y: 0.66},
 	}
 
 	GameActionsImpl.GenerateLevel(1)

@@ -1531,13 +1531,6 @@ func (gl *GameLogic) updateCamera() {
     }
 }
 
-func abs(x int) int {
-    if x < 0 {
-        return -x
-    }
-    return x
-}
-
 func isItemMessage(message string) bool {
     itemKeywords := []string{"Picked up", "potion", "scroll", "weapon", "food", "treasure", "gold"}
     for _, keyword := range itemKeywords {
@@ -2025,5 +2018,26 @@ func (gl *GameLogic) validateKeyAccessibility(level *Level) bool {
         }
     }
 
+    return true
+}
+
+func (gl *GameLogic) canMoveTo3D(x, y int) bool {
+    if x < 0 || x >= len(CurrentGameState.Level.Grid) ||
+       y < 0 || y >= len(CurrentGameState.Level.Grid[0]) {
+        return false
+    }
+    
+    // Проверяем стену
+    if CurrentGameState.Level.Grid[x][y].IsWall {
+        return false
+    }
+    
+    // Проверяем заблокированную дверь
+    for _, door := range CurrentGameState.Level.Doors {
+        if door.Position.X == x && door.Position.Y == y && door.IsLocked {
+            return false
+        }
+    }
+    
     return true
 }
