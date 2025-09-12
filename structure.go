@@ -11,16 +11,27 @@ type GameState struct {
 	GameSession *GameSession
 	Statistics  *Statistics
 	Camera      *Camera
+	PlayerProgress *ProgressTracker // ДОБАВЛЯЕМ ТРЕКЕР ПРОГРЕССА
 	
 	// Флаги состояния
 	IsRunning    bool
 	CurrentLevel int
 	GameWon      bool
 	GameOver     bool
-	SleepTurns   int // Для эффекта усыпления от змея-мага
+	SleepTurns   int
+	Messages     []string
+	StatusMessages []string
+}
 
-	Messages []string
-	StatusMessages []string  // Отдельные сообщения для статуса
+// Добавим ProgressTracker в GameState
+type ProgressTracker struct {
+    LevelsCompleted    int
+    EnemiesDefeated    int
+    DamageTaken        int
+    DamageDealt        int
+    ItemsUsed          int
+    DifficultyLevel    int
+    LastAdjustmentTime int
 }
 
 // Character представляет игрока
@@ -51,6 +62,7 @@ type Enemy struct {
 	attackCooldown int // Для огров после атаки
 	teleportCooldown int // Для призраков
 	invisibilityCooldown int // Для призраков
+	IsDisguised bool
 }
 
 // Item представляет предмет
@@ -75,6 +87,7 @@ type Level struct {
 	Grid       [][]Cell
 	Discovered [][]bool
 	Visible    [][]bool
+	Doors      []*Door  // ДОБАВЛЯЕМ ДВЕРИ
 }
 
 // Room представляет комнату
@@ -154,6 +167,7 @@ const (
 	Ghost
 	Ogre
 	SnakeMage
+	Mimic // ДОБАВЛЯЕМ MIMIC
 )
 
 // ItemType представляет тип предмета
@@ -177,7 +191,18 @@ const (
 	StrengthScroll
 	Sword
 	Axe
+	KeyRed    // ДОБАВЛЯЕМ КЛЮЧИ
+	KeyBlue
+	KeyGreen
+	KeyYellow
 )
+
+// Тип для дверей
+type Door struct {
+    Position  Position
+    Color     ItemSubType
+    IsLocked  bool
+}
 
 // MovementPattern представляет паттерн движения
 type MovementPattern int
@@ -229,4 +254,26 @@ func max(a, b int) int {
         return a
     }
     return b
+}
+
+func min(a, b int) int {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+// GraphNode представляет узел в графе доступности
+type GraphNode struct {
+    Position  Position
+    IsDoor    bool
+    IsLocked  bool
+    KeyType   ItemSubType
+    Neighbors []*GraphNode
+    Visited   bool
+}
+
+// AccessibilityGraph представляет граф доступности уровня
+type AccessibilityGraph struct {
+    Nodes []*GraphNode
 }

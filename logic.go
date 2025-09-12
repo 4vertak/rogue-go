@@ -33,25 +33,21 @@ func (gl *GameLogic) MovePlayer(dx, dy int) {
         CurrentGameState.GameSession.CellsWalked++
         gl.updateVisibility()
 
-        // Если на клетке есть предметы — автоматически подбираем (если место в рюкзаке)
+        // Автоматически подбираем ВСЕ предметы на клетке, КРОМЕ КЛЮЧЕЙ
         picked := false
         for i := len(CurrentGameState.Items) - 1; i >= 0; i-- {
             item := CurrentGameState.Items[i]
             if item.Position.X == newX && item.Position.Y == newY {
+                // Ключи НЕ подбираются автоматически!
+                if item.Type == Scroll && (item.SubType == KeyRed || item.SubType == KeyBlue || 
+                   item.SubType == KeyGreen || item.SubType == KeyYellow) {
+                    gl.AddMessage("You see a key here (press 'p' to pick up)")
+                    continue
+                }
+                
                 if gl.canAddToBackpack(item) {
                     gl.addToBackpack(item)
-                    // удалить из глобального списка предметов
                     CurrentGameState.Items = append(CurrentGameState.Items[:i], CurrentGameState.Items[i+1:]...)
-                    // удалить из комнаты, если он там указан
-                    if CurrentGameState.Level != nil {
-                        for _, room := range CurrentGameState.Level.Rooms {
-                            for ri := len(room.Items) - 1; ri >= 0; ri-- {
-                                if room.Items[ri] == item || (room.Items[ri].Position == item.Position) {
-                                    room.Items = append(room.Items[:ri], room.Items[ri+1:]...)
-                                }
-                            }
-                        }
-                    }
                     picked = true
                 } else {
                     gl.AddMessage("Item here but backpack is full for this type")
@@ -59,7 +55,7 @@ func (gl *GameLogic) MovePlayer(dx, dy int) {
             }
         }
         if picked {
-            gl.AddMessage("You picked up available items automatically")
+            gl.AddMessage("You picked up items automatically")
         }
 
         // После движения проверяем автоматический переход на следующий уровень
@@ -173,13 +169,21 @@ func (gl *GameLogic) UseItem(itemType ItemType, index int) {
             return
         }
         scroll := CurrentGameState.Backpack.Scrolls[index]
-        gl.applyScrollEffect(scroll)
-        CurrentGameState.Backpack.Scrolls = append(
-            CurrentGameState.Backpack.Scrolls[:index],
-            CurrentGameState.Backpack.Scrolls[index+1:]...,
-        )
-        CurrentGameState.GameSession.ScrollsUsed++
-        gl.AddMessage("Used scroll")
+        
+        // Проверяем, является ли свиток ключом
+        if scroll.SubType == KeyRed || scroll.SubType == KeyBlue || 
+        scroll.SubType == KeyGreen || scroll.SubType == KeyYellow {
+            gl.UseKey(scroll) // Используем ключ для открытия дверей
+            // НЕ удаляем ключ из инвентаря здесь - это сделает UseKey
+        } else {
+            gl.applyScrollEffect(scroll) // Применяем эффект обычного свитка
+            CurrentGameState.Backpack.Scrolls = append(
+                CurrentGameState.Backpack.Scrolls[:index],
+                CurrentGameState.Backpack.Scrolls[index+1:]...,
+            )
+            CurrentGameState.GameSession.ScrollsUsed++
+            gl.AddMessage("Used scroll")
+        }
     
     case Weapon:
         if index == 0 {
@@ -546,19 +550,32 @@ func (gl *GameLogic) connectRoomsWithCorridors(level *Level) {
 }
 
 func (gl *GameLogic) populateLevel(level *Level, levelNum int) {
+    // Генерируем двери и ключи (Задание 6)
+    if levelNum > 1 {
+        gl.generateDoorsAndKeys(level, levelNum)
+    }
+    
+    // Применяем балансировку сложности (Задание 7)
+    difficulty := 3 // Средняя сложность по умолчанию
+    if CurrentGameState.PlayerProgress != nil {
+        difficulty = CurrentGameState.PlayerProgress.DifficultyLevel
+    }
+    adjustedLevelNum := levelNum + (difficulty - 3)
+    
     for _, room := range level.Rooms {
-        // пропускаем стартовую комнату
         if room == level.StartRoom {
             continue
         }
 
-        numEnemies := 1 + rand.Intn(2) + levelNum/2
-        if numEnemies > 3 {
-            numEnemies = 3
-        }
+        // Корректируем количество врагов на основе сложности
+        baseEnemies := 1 + adjustedLevelNum/2
+        numEnemies := baseEnemies + (difficulty - 3)
+        if numEnemies > 5 { numEnemies = 5 }
+        if numEnemies < 1 { numEnemies = 1 }
+        
         for i := 0; i < numEnemies; i++ {
             if rand.Intn(100) < 70 {
-                enemy := gl.createEnemy(levelNum, room)
+                enemy := gl.createEnemy(adjustedLevelNum, room)
                 if enemy != nil {
                     room.Enemies = append(room.Enemies, enemy)
                     CurrentGameState.Enemies = append(CurrentGameState.Enemies, enemy)
@@ -566,10 +583,15 @@ func (gl *GameLogic) populateLevel(level *Level, levelNum int) {
             }
         }
 
-        numItems := 1 + rand.Intn(2)
+        // Корректируем количество предметов на основе сложности
+        baseItems := 1 + adjustedLevelNum/3  
+        numItems := baseItems - (difficulty - 3)
+        if numItems > 3 { numItems = 3 }
+        if numItems < 0 { numItems = 0 }
+
         for i := 0; i < numItems; i++ {
             if rand.Intn(100) < 60 {
-                item := gl.createItem(levelNum, room, level)
+                item := gl.createItem(adjustedLevelNum, room, level)
                 if item != nil {
                     room.Items = append(room.Items, item)
                     CurrentGameState.Items = append(CurrentGameState.Items, item)
@@ -579,106 +601,119 @@ func (gl *GameLogic) populateLevel(level *Level, levelNum int) {
     }
 }
 
+// В функции createEnemy исправим ошибку с enemy
 func (gl *GameLogic) createEnemy(levelNum int, room *Room) *Enemy {
-	enemyTypes := []EnemyType{Zombie, Vampire, Ghost, Ogre, SnakeMage}
-	weights := []int{40, 20, 15, 15, 10}
+    // Сначала определим типы и веса
+    enemyTypes := []EnemyType{Zombie, Vampire, Ghost, Ogre, SnakeMage, Mimic}
+    weights := []int{35, 15, 15, 15, 10, 10} // Уменьшили веса других, добавили Mimic
 
-	totalWeight := 0
-	for _, w := range weights {
-		totalWeight += w
-	}
+    totalWeight := 0
+    for _, w := range weights {
+        totalWeight += w
+    }
 
-	roll := rand.Intn(totalWeight)
-	var chosenType EnemyType
+    roll := rand.Intn(totalWeight)
+    var chosenType EnemyType
 
-	for i, w := range weights {
-		if roll < w {
-			chosenType = enemyTypes[i]
-			break
-		}
-		roll -= w
-	}
+    for i, w := range weights {
+        if roll < w {
+            chosenType = enemyTypes[i]
+            break
+        }
+        roll -= w
+    }
 
-	health := 6 + levelNum*3
-	agility := 4 + levelNum
-	strength := 3 + levelNum
-    hostility := 6 + levelNum*2 // Базовая враждебность
+    health := 4 + levelNum*2  // Меньше здоровья
+    agility := 3 + levelNum    // Меньше ловкости
+    strength := 2 + levelNum   // Меньше силы
+    hostility := 5 + levelNum  // Меньший радиус агрессии
     
     switch chosenType {
     case Zombie:
         health += 6
         agility -= 1
         strength += 1
-        hostility += 2 // Зомби имеют большую зону агрессии
+        hostility += 2
     case Vampire:
         health += 3
         agility += 2
         strength += 1
-        hostility += 3 // Вампиры очень агрессивны
+        hostility += 3
     case Ghost:
         health += 1
         agility += 3
         strength -= 1
-        hostility -= 2 // Призраки менее агрессивны
+        hostility -= 2
     case Ogre:
         health += 10
         agility -= 2
         strength += 3
-        hostility += 1 // Огры умеренно агрессивны
+        hostility += 1
     case SnakeMage:
         health += 2
         agility += 2
         strength -= 1
-        hostility += 4 // Змеи-маги очень агрессивны
+        hostility += 4
+    case Mimic:
+        health += 8
+        agility += 3
+        strength += 1
+        hostility = 1 // Низкая враждебность
     }
 
-	var pattern MovementPattern
-	switch chosenType {
-	case Zombie:
-		pattern = Random
-	case Vampire:
-		pattern = Chase
-	case Ghost:
-		pattern = Teleport
-	case Ogre:
-		pattern = TwoStep
-	case SnakeMage:
-		pattern = Diagonal
-	}
+    // Устанавливаем паттерн движения в зависимости от типа
+    var pattern MovementPattern
+    switch chosenType {
+    case Zombie:
+        pattern = Random
+    case Vampire:
+        pattern = Chase
+    case Ghost:
+        pattern = Teleport
+    case Ogre:
+        pattern = TwoStep
+    case SnakeMage:
+        pattern = Diagonal
+    case Mimic:
+        pattern = Random
+    default:
+        pattern = Random
+    }
 
-	var pos Position
-	attempts := 0
-	for attempts < 50 {
-		pos = Position{
-			X: room.X + 1 + rand.Intn(max(1, room.Width-2)),
-			Y: room.Y + 1 + rand.Intn(max(1, room.Height-2)),
-		}
-		if pos.X >= room.X && pos.X < room.X+room.Width &&
-			pos.Y >= room.Y && pos.Y < room.Y+room.Height {
-			break
-		}
-		attempts++
-	}
+    var pos Position
+    attempts := 0
+    for attempts < 50 {
+        pos = Position{
+            X: room.X + 1 + rand.Intn(max(1, room.Width-2)),
+            Y: room.Y + 1 + rand.Intn(max(1, room.Height-2)),
+        }
+        if pos.X >= room.X && pos.X < room.X+room.Width &&
+            pos.Y >= room.Y && pos.Y < room.Y+room.Height {
+            break
+        }
+        attempts++
+    }
 
-	if attempts == 50 {
-		return nil
-	}
+    if attempts == 50 {
+        return nil
+    }
 
-	return &Enemy{
-		Type:               chosenType,
-		Health:             health,
-		Agility:            agility,
-		Strength:           strength,
-		Hostility:          hostility,
-		Position:           pos,
-		IsVisible:          true,
-		Pattern:            pattern,
-		moveCooldown:       0,
-		hasBeenHit:         false,
-		attackCooldown:     0,
-		teleportCooldown:   0,
-		invisibilityCooldown: 0,
-	}
+    return &Enemy{
+        Type:               chosenType,
+        Health:             health,
+        Agility:            agility,
+        Strength:           strength,
+        Hostility:          hostility,
+        Position:           pos,
+        IsVisible:          true,
+        Pattern:            pattern,
+        moveCooldown:       0,
+        hasBeenHit:         false,
+        attackCooldown:     0,
+        teleportCooldown:   0,
+        invisibilityCooldown: 0,
+        IsDisguised:        chosenType == Mimic, // Mimic начинается замаскированным
+    }
 }
 
 func (gl *GameLogic) createItem(levelNum int, room *Room, levelOpt ...*Level) *Item {
@@ -801,8 +836,11 @@ func (gl *GameLogic) UpdateGameState() {
     // Проверяем автоматический выход
     gl.checkForAutomaticExit()
     
-    // Проверяем близость к выходу (подсказка для игрока)
+    // Проверяем близость к выходу
     gl.checkExitProximity()
+    
+    // Балансируем сложность (Задание 7)
+    gl.adjustDifficulty()
     
     // Проверяем условия игры
     gl.CheckGameConditions()
@@ -844,7 +882,29 @@ func (gl *GameLogic) canMoveTo(x, y int) bool {
        y < 0 || y >= len(CurrentGameState.Level.Grid[0]) {
         return false
     }
-    return !CurrentGameState.Level.Grid[x][y].IsWall
+    
+    // Проверяем стену
+    if CurrentGameState.Level.Grid[x][y].IsWall {
+        return false
+    }
+    
+    // Проверяем заблокированную дверь
+    for _, door := range CurrentGameState.Level.Doors {
+        if door.Position.X == x && door.Position.Y == y && door.IsLocked {
+            return false
+        }
+    }
+    
+    // Проверяем, нет ли врага на этой клетке
+    for _, enemy := range CurrentGameState.Enemies {
+        if enemy.Position.X == x && enemy.Position.Y == y {
+            return false // Не можем пройти через врага
+        }
+    }
+    
+    // ПРЕДМЕТЫ НЕ БЛОКИРУЮТ ДВИЖЕНИЕ - они автоматически подбираются
+    
+    return true
 }
 
 func (gl *GameLogic) isInAttackRange(pos1, pos2 Position) bool {
@@ -854,86 +914,99 @@ func (gl *GameLogic) isInAttackRange(pos1, pos2 Position) bool {
 }
 
 func (gl *GameLogic) resolveCombat(attacker interface{}, defender interface{}) {
-	var attackerStr, attackerAgi, defenderAgi int
+    var attackerStr, attackerAgi int
 
-	switch a := attacker.(type) {
-	case *Character:
-		attackerStr = a.Strength
-		if a.CurrentWeapon != nil {
-			attackerStr += a.CurrentWeapon.StrengthBoost
-		}
-		attackerAgi = a.Agility
-	case *Enemy:
-		attackerStr = a.Strength
-		attackerAgi = a.Agility
-	}
+    // Получаем характеристики атакующего
+    switch a := attacker.(type) {
+    case *Character:
+        attackerStr = a.Strength
+        if a.CurrentWeapon != nil {
+            attackerStr += a.CurrentWeapon.StrengthBoost
+        }
+        attackerAgi = a.Agility
+    case *Enemy:
+        attackerStr = a.Strength
+        attackerAgi = a.Agility
+    }
 
-	switch d := defender.(type) {
-	case *Character:
-		defenderAgi = d.Agility
-	case *Enemy:
-		defenderAgi = d.Agility
-	}
+    // Получаем характеристики защищающегося
+    var defenderAgi int
+    switch d := defender.(type) {
+    case *Character:
+        defenderAgi = d.Agility
+    case *Enemy:
+        defenderAgi = d.Agility
+    }
 
-	hitChance := 65 + (attackerAgi-defenderAgi)*2
-	if hitChance < 20 {
-		hitChance = 20
-	}
-	if hitChance > 95 {
-		hitChance = 95
-	}
+    // Рассчитываем шанс попадания (более сбалансированный)
+    hitChance := 50 + (attackerAgi - defenderAgi)
+    if hitChance < 20 {
+        hitChance = 20
+    }
+    if hitChance > 90 {
+        hitChance = 90
+    }
 
-	if rand.Intn(100) < hitChance {
-		damage := attackerStr
-		switch d := defender.(type) {
-		case *Character:
-			if _, ok := attacker.(*Enemy); ok {
-				damage = attackerStr / 2 // враги бьют слабее
-			}
-			d.Health -= damage
-			CurrentGameState.GameSession.HitsTaken++
-			gl.AddMessage("You take " + strconv.Itoa(damage) + " damage!")
+    if rand.Intn(100) < hitChance {
+        damage := attackerStr
+        
+        // Настраиваем урон в зависимости от того, кто атакует
+        switch d := defender.(type) {
+        case *Character:
+            // Враги наносят меньше урона игроку
+            if _, ok := attacker.(*Enemy); ok {
+                damage = max(1, attackerStr/3) // Враги бьют значительно слабее
+            }
+            d.Health -= damage
+            CurrentGameState.GameSession.HitsTaken++
+            gl.AddMessage("You take " + strconv.Itoa(damage) + " damage!")
 
-			// спецэффекты врагов
-			if e, ok := attacker.(*Enemy); ok {
-				gl.applyEnemySpecialEffects(e, d)
-			}
+            // спецэффекты врагов
+            if e, ok := attacker.(*Enemy); ok {
+                gl.applyEnemySpecialEffects(e, d)
+            }
 
-		case *Enemy:
-			if _, ok := attacker.(*Character); ok {
-				// игрок наносит полный урон
-			} else {
-				damage = attackerStr / 2
-			}
-			d.Health -= damage
-			CurrentGameState.GameSession.HitsLanded++
-			gl.AddMessage("You hit enemy for " + strconv.Itoa(damage) + " damage!")
+        case *Enemy:
+            // Игрок наносит полный урон врагам
+            if _, ok := attacker.(*Character); ok {
+                damage = attackerStr
+            } else {
+                damage = max(1, attackerStr/2) // Враги друг другу наносят средний урон
+            }
+            d.Health -= damage
+            CurrentGameState.GameSession.HitsLanded++
+            gl.AddMessage("You hit enemy for " + strconv.Itoa(damage) + " damage!")
 
-			// особенность вампира: первый удар = дренаж max HP
-			if d.Type == Vampire && !d.hasBeenHit {
-				d.hasBeenHit = true
-				if char, ok := attacker.(*Character); ok {
-					char.MaxHealth -= 3
-					if char.Health > char.MaxHealth {
-						char.Health = char.MaxHealth
-					}
-					gl.AddMessage("Vampire drained your max health! -3 Max HP")
-				}
-			}
-		}
-	} else {
-		gl.AddMessage("Attack missed!")
-	}
+            // особенность вампира: первый удар = дренаж max HP
+            if d.Type == Vampire && !d.hasBeenHit {
+                d.hasBeenHit = true
+                if char, ok := attacker.(*Character); ok {
+                    char.MaxHealth = max(10, char.MaxHealth-2) // Меньший дренаж
+                    if char.Health > char.MaxHealth {
+                        char.Health = char.MaxHealth
+                    }
+                    gl.AddMessage("Vampire drained your max health! -2 Max HP")
+                }
+            }
+        }
+    } else {
+        gl.AddMessage("Attack missed!")
+    }
 }
 
+// Специальные эффекты для Mimic
 func (gl *GameLogic) applyEnemySpecialEffects(enemy *Enemy, player *Character) {
     switch enemy.Type {
     case SnakeMage:
-        // Змей-маг усыпляет игрока
-        if rand.Intn(100) < 30 { // 30% chance
+        if rand.Intn(100) < 30 {
             CurrentGameState.SleepTurns = 2 + rand.Intn(3)
             gl.AddMessage("Snake Mage puts you to sleep for " + 
                 strconv.Itoa(CurrentGameState.SleepTurns) + " turns!")
+        }
+    case Mimic:
+        if rand.Intn(100) < 25 {
+            CurrentGameState.SleepTurns = 1
+            gl.AddMessage("Mimic's surprise attack stuns you!")
         }
     }
 }
@@ -972,10 +1045,10 @@ func (gl *GameLogic) handleEnemyDefeat(enemy *Enemy) {
 
 var enemyTurnCounter int
 
+// Исправляем функцию moveEnemies
 func (gl *GameLogic) moveEnemies() {
     enemyTurnCounter++
     
-    // Монстры двигаются КАЖДЫЙ ход, но с разной скоростью в зависимости от типа
     for _, enemy := range CurrentGameState.Enemies {
         if enemy.attackCooldown > 0 {
             enemy.attackCooldown--
@@ -998,25 +1071,37 @@ func (gl *GameLogic) moveEnemies() {
         // Проверяем, находится ли игрок в радиусе враждебности
         if dist <= enemy.Hostility {
             // Игрок в зоне агрессии - преследуем!
-            switch enemy.Pattern {
-            case Random:
+            switch enemy.Type {
+            case Zombie:
                 gl.moveRandom(enemy)
-            case Chase:
+            case Vampire:
                 gl.moveChase(enemy)
-            case Teleport:
+            case Ghost:
                 gl.moveTeleport(enemy)
-            case Diagonal:
-                gl.moveDiagonal(enemy)
-            case TwoStep:
+            case Ogre:
                 gl.moveTwoStep(enemy)
+            case SnakeMage:
+                gl.moveDiagonal(enemy)
+            case Mimic: // ДОБАВЛЯЕМ MIMIC
+                gl.moveMimic(enemy)
+            default:
+                gl.moveRandom(enemy)
             }
         } else {
             // Игрок вне зоны агрессии - патрулируем
-            switch enemy.Pattern {
-            case Random:
+            switch enemy.Type {
+            case Zombie:
                 gl.moveRandom(enemy)
-            case Teleport:
+            case Vampire:
+                gl.moveRandom(enemy)
+            case Ghost:
                 gl.moveRandom(enemy) // Призрак телепортируется только при преследовании
+            case Ogre:
+                gl.moveRandom(enemy)
+            case SnakeMage:
+                gl.moveRandom(enemy)
+            case Mimic: // ДОБАВЛЯЕМ MIMIC
+                gl.moveMimic(enemy)
             default:
                 gl.moveRandom(enemy)
             }
@@ -1257,7 +1342,10 @@ func (gl *GameLogic) checkForEnemies() {
     for i := len(CurrentGameState.Enemies) - 1; i >= 0; i-- {
         enemy := CurrentGameState.Enemies[i]
         
-        if enemy.Position.X == playerPos.X && enemy.Position.Y == playerPos.Y {
+        // Проверяем соседние клетки (атака на расстоянии 1 клетки)
+        if abs(enemy.Position.X-playerPos.X) <= 1 && 
+           abs(enemy.Position.Y-playerPos.Y) <= 1 {
+            
             gl.resolveCombat(CurrentGameState.Player, enemy)
             
             if enemy.Health <= 0 {
@@ -1267,7 +1355,9 @@ func (gl *GameLogic) checkForEnemies() {
                     CurrentGameState.Enemies[:i],
                     CurrentGameState.Enemies[i+1:]...,
                 )
-                break // Выходим после первого убитого врага
+            } else {
+                // Также враг атакует игрока в ответ
+                gl.resolveCombat(enemy, CurrentGameState.Player)
             }
         }
     }
@@ -1286,28 +1376,35 @@ func (gl *GameLogic) checkForExit() {
 }
 
 func (gl *GameLogic) canAddToBackpack(item *Item) bool {
-	if item == nil {
-		return false
-	}
-	if item.Type == Treasure {
-		return true
-	}
-	bp := CurrentGameState.Backpack
-	if bp == nil {
-		return true
-	}
-	switch item.Type {
-	case Weapon:
-		return len(bp.Weapons) < 5
-	case Food:
-		return len(bp.Food) < 10
-	case Potion:
-		return len(bp.Potions) < 5
-	case Scroll:
-		return len(bp.Scrolls) < 5
-	default:
-		return false
-	}
+    if item == nil {
+        return false
+    }
+    if item.Type == Treasure {
+        return true
+    }
+    // КЛЮЧИ МОЖНО ВСЕГДА ПОДБИРАТЬ
+    if item.Type == Scroll && (item.SubType == KeyRed || item.SubType == KeyBlue || 
+       item.SubType == KeyGreen || item.SubType == KeyYellow) {
+        return true
+    }
+    
+    bp := CurrentGameState.Backpack
+    if bp == nil {
+        return true
+    }
+    
+    switch item.Type {
+    case Weapon:
+        return len(bp.Weapons) < 5
+    case Food:
+        return len(bp.Food) < 10
+    case Potion:
+        return len(bp.Potions) < 5
+    case Scroll:
+        return len(bp.Scrolls) < 5
+    default:
+        return false
+    }
 }
 
 func (gl *GameLogic) addToBackpack(item *Item) {
@@ -1345,8 +1442,16 @@ func (gl *GameLogic) addToBackpack(item *Item) {
         gl.AddMessage("Picked up potion")
         
     case Scroll:
-        CurrentGameState.Backpack.Scrolls = append(CurrentGameState.Backpack.Scrolls, item)
-        gl.AddMessage("Picked up scroll")
+        // ОСОБАЯ ОБРАБОТКА ДЛЯ КЛЮЧЕЙ
+        if item.SubType == KeyRed || item.SubType == KeyBlue || 
+           item.SubType == KeyGreen || item.SubType == KeyYellow {
+            // Ключи не должны автоматически использоваться!
+            CurrentGameState.Backpack.Scrolls = append(CurrentGameState.Backpack.Scrolls, item)
+            gl.AddMessage("Picked up " + gl.getKeyName(item.SubType))
+        } else {
+            CurrentGameState.Backpack.Scrolls = append(CurrentGameState.Backpack.Scrolls, item)
+            gl.AddMessage("Picked up scroll")
+        }
         
     case Treasure:
         CurrentGameState.Backpack.Treasure += item.Value
@@ -1507,4 +1612,418 @@ func (gl *GameLogic) nextLevel() {
     gl.updateVisibility()
     
     gl.AddMessage("Welcome to level " + strconv.Itoa(nextLevelNum) + "!")
+}
+
+func (gl *GameLogic) generateDoorsAndKeys(level *Level, levelNum int) {
+    colors := []ItemSubType{KeyRed, KeyBlue, KeyGreen, KeyYellow}
+    maxAttempts := 10
+    attempts := 0
+
+    for attempts < maxAttempts {
+        // Очищаем предыдущие двери и ключи
+        level.Doors = make([]*Door, 0)
+        
+        // Удаляем предыдущие ключи из Items
+        newItems := make([]*Item, 0)
+        for _, item := range CurrentGameState.Items {
+            if item.Type != Scroll || 
+               (item.SubType != KeyRed && item.SubType != KeyBlue && 
+                item.SubType != KeyGreen && item.SubType != KeyYellow) {
+                newItems = append(newItems, item)
+            }
+        }
+        CurrentGameState.Items = newItems
+
+        // Создаем 1-2 двери на уровень
+        numDoors := 1 + rand.Intn(2)
+        doorsCreated := 0
+        
+        for i := 0; i < numDoors && doorsCreated < numDoors; i++ {
+            if len(level.Rooms) < 2 {
+                continue
+            }
+            
+            // Выбираем две случайные комнаты
+            roomIdx1 := rand.Intn(len(level.Rooms))
+            roomIdx2 := (roomIdx1 + 1 + rand.Intn(len(level.Rooms)-1)) % len(level.Rooms)
+            
+            room1 := level.Rooms[roomIdx1]
+            room2 := level.Rooms[roomIdx2]
+            
+            // Находим точку соединения
+            doorPos := gl.findConnectionPoint(room1, room2)
+            
+            // Проверяем, что позиция валидна
+            if doorPos.X < 0 || doorPos.X >= len(level.Grid) ||
+               doorPos.Y < 0 || doorPos.Y >= len(level.Grid[0]) ||
+               level.Grid[doorPos.X][doorPos.Y].IsWall {
+                continue
+            }
+
+            color := colors[rand.Intn(len(colors))]
+            
+            door := &Door{
+                Position: doorPos,
+                Color:    color,
+                IsLocked: true,
+            }
+            
+            level.Doors = append(level.Doors, door)
+            
+            // Создаем ключ в одной из комнат
+            keyRoom := room1
+            if rand.Intn(100) < 50 {
+                keyRoom = room2
+            }
+            
+            key := &Item{
+                Type:    Scroll,
+                SubType: color,
+                Position: Position{
+                    X: keyRoom.X + 1 + rand.Intn(max(1, keyRoom.Width-2)),
+                    Y: keyRoom.Y + 1 + rand.Intn(max(1, keyRoom.Height-2)),
+                },
+                Name: gl.getKeyName(color),
+            }
+            
+            CurrentGameState.Items = append(CurrentGameState.Items, key)
+            keyRoom.Items = append(keyRoom.Items, key)
+            
+            doorsCreated++
+        }
+
+        // Проверяем доступность ключей
+        if gl.validateKeyAccessibility(level) {
+            gl.AddMessage("Level " + strconv.Itoa(levelNum) + 
+                " generated with " + strconv.Itoa(len(level.Doors)) + " doors")
+            return
+        }
+        
+        attempts++
+    }
+
+    // Если не удалось создать валидную конфигурацию после maxAttempts попыток,
+    // создаем уровень без заблокированных дверей
+    gl.AddMessage("Warning: Could not generate valid door configuration after " + 
+        strconv.Itoa(maxAttempts) + " attempts. Creating level without locked doors.")
+    
+    for i := range level.Doors {
+        level.Doors[i].IsLocked = false
+    }
+}
+
+func (gl *GameLogic) findConnectionPoint(room1, room2 *Room) Position {
+    // Более сложный алгоритм поиска точки соединения
+    // Пытаемся найти точку на прямой между центрами комнат
+    
+    center1 := Position{
+        X: room1.X + room1.Width/2,
+        Y: room1.Y + room1.Height/2,
+    }
+    center2 := Position{
+        X: room2.X + room2.Width/2,
+        Y: room2.Y + room2.Height/2,
+    }
+
+    // Используем алгоритм Брезенхема для поиска подходящей точки
+    dx := abs(center2.X - center1.X)
+    dy := abs(center2.Y - center1.Y)
+    
+    var sx, sy int
+    if center1.X < center2.X { sx = 1 } else { sx = -1 }
+    if center1.Y < center2.Y { sy = 1 } else { sy = -1 }
+    
+    err := dx - dy
+    
+    x, y := center1.X, center1.Y
+    for {
+        // Проверяем, является ли точка проходимой и не стеной
+        if x >= 0 && x < len(CurrentGameState.Level.Grid) &&
+           y >= 0 && y < len(CurrentGameState.Level.Grid[0]) &&
+           !CurrentGameState.Level.Grid[x][y].IsWall {
+            return Position{X: x, Y: y}
+        }
+        
+        if x == center2.X && y == center2.Y {
+            break
+        }
+        
+        e2 := 2 * err
+        if e2 > -dy {
+            err -= dy
+            x += sx
+        }
+        if e2 < dx {
+            err += dx
+            y += sy
+        }
+    }
+    
+    // Если не нашли подходящую точку на прямой, возвращаем середину
+    return Position{
+        X: (center1.X + center2.X) / 2,
+        Y: (center1.Y + center2.Y) / 2,
+    }
+}
+
+func (gl *GameLogic) getKeyName(color ItemSubType) string {
+    switch color {
+    case KeyRed:
+        return "Red Key"
+    case KeyBlue:
+        return "Blue Key"
+    case KeyGreen:
+        return "Green Key"
+    case KeyYellow:
+        return "Yellow Key"
+    default:
+        return "Key"
+    }
+}
+
+func (gl *GameLogic) UseKey(key *Item) {
+    playerPos := CurrentGameState.Player.Position
+    
+    // Проверяем соседние клетки на наличие дверей
+    directions := []Position{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+    
+    for _, dir := range directions {
+        checkX, checkY := playerPos.X+dir.X, playerPos.Y+dir.Y
+        
+        for i, door := range CurrentGameState.Level.Doors {
+            if door.Position.X == checkX && door.Position.Y == checkY && 
+               door.IsLocked && door.Color == key.SubType {
+                
+                // Открываем дверь
+                CurrentGameState.Level.Doors[i].IsLocked = false
+                gl.AddMessage("You unlocked the " + gl.getKeyName(key.SubType) + " door!")
+                
+                // Удаляем ключ из инвентаря
+                for j, scroll := range CurrentGameState.Backpack.Scrolls {
+                    if scroll == key {
+                        CurrentGameState.Backpack.Scrolls = append(
+                            CurrentGameState.Backpack.Scrolls[:j],
+                            CurrentGameState.Backpack.Scrolls[j+1:]...,
+                        )
+                        break
+                    }
+                }
+                return
+            }
+        }
+    }
+    
+    gl.AddMessage("No matching locked door nearby")
+    // Ключ НЕ удаляется из инвентаря, если нет подходящей двери
+}
+
+func (gl *GameLogic) adjustDifficulty() {
+    if CurrentGameState.PlayerProgress == nil {
+        return
+    }
+    
+    progress := CurrentGameState.PlayerProgress
+    player := CurrentGameState.Player
+    
+    // Анализируем прогресс игрока
+    survivalRate := float64(player.Health) / float64(player.MaxHealth)
+    
+    // Определяем нужна ли корректировка сложности (каждые 50 ходов)
+    if CurrentGameState.GameSession.CellsWalked-progress.LastAdjustmentTime > 50 {
+        if survivalRate < 0.3 {
+            // Игроку сложно - уменьшаем сложность
+            progress.DifficultyLevel = max(1, progress.DifficultyLevel-1)
+            gl.AddMessage("The dungeon feels less dangerous...")
+        } else if survivalRate > 0.8 {
+            // Игроку легко - увеличиваем сложность
+            progress.DifficultyLevel = min(5, progress.DifficultyLevel+1)
+            gl.AddMessage("The dungeon grows more treacherous...")
+        }
+        
+        progress.LastAdjustmentTime = CurrentGameState.GameSession.CellsWalked
+    }
+}
+
+// Функция для движения Mimic
+func (gl *GameLogic) moveMimic(enemy *Enemy) {
+    playerPos := CurrentGameState.Player.Position
+    dist := abs(enemy.Position.X-playerPos.X) + abs(enemy.Position.Y-playerPos.Y)
+    
+    // Мимик раскрывается, когда игрок подходит близко
+    if enemy.IsDisguised && dist <= 2 {
+        enemy.IsDisguised = false
+        gl.AddMessage("The item was a Mimic!")
+    }
+    
+    // Если раскрыт, ведет себя как обычный враг
+    if !enemy.IsDisguised {
+        gl.moveChase(enemy)
+    }
+    // Если замаскирован, не двигается
+}
+
+// buildAccessibilityGraph строит граф доступности уровня
+func (gl *GameLogic) buildAccessibilityGraph(level *Level) *AccessibilityGraph {
+    graph := &AccessibilityGraph{Nodes: make([]*GraphNode, 0)}
+    nodeMap := make(map[Position]*GraphNode)
+
+    // Создаем узлы для всех проходимых клеток
+    for x := 0; x < len(level.Grid); x++ {
+        for y := 0; y < len(level.Grid[0]); y++ {
+            if !level.Grid[x][y].IsWall {
+                pos := Position{X: x, Y: y}
+                node := &GraphNode{
+                    Position: pos,
+                    IsDoor:   false,
+                    IsLocked: false,
+                }
+                
+                // Проверяем, есть ли здесь дверь
+                for _, door := range level.Doors {
+                    if door.Position.X == x && door.Position.Y == y {
+                        node.IsDoor = true
+                        node.IsLocked = door.IsLocked
+                        node.KeyType = door.Color
+                        break
+                    }
+                }
+                
+                graph.Nodes = append(graph.Nodes, node)
+                nodeMap[pos] = node
+            }
+        }
+    }
+
+    // Создаем связи между соседними узлами
+    for _, node := range graph.Nodes {
+        directions := []Position{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+        
+        for _, dir := range directions {
+            neighborPos := Position{X: node.Position.X + dir.X, Y: node.Position.Y + dir.Y}
+            if neighbor, exists := nodeMap[neighborPos]; exists {
+                node.Neighbors = append(node.Neighbors, neighbor)
+            }
+        }
+    }
+
+    return graph
+}
+
+// bfsSearch выполняет поиск в ширину для проверки доступности ключей
+func (gl *GameLogic) bfsSearch(start *GraphNode, targetKey ItemSubType) bool {
+    queue := []*GraphNode{start}
+    visited := make(map[Position]bool)
+    visited[start.Position] = true
+
+    for len(queue) > 0 {
+        current := queue[0]
+        queue = queue[1:]
+
+        // Если нашли ключ нужного типа - возвращаем true
+        for _, item := range CurrentGameState.Items {
+            if item.Position.X == current.Position.X && 
+               item.Position.Y == current.Position.Y &&
+               item.Type == Scroll && // Ключи используют тип Scroll
+               item.SubType == targetKey {
+                return true
+            }
+        }
+
+        // Добавляем соседей в очередь
+        for _, neighbor := range current.Neighbors {
+            if !visited[neighbor.Position] {
+                // Если это заблокированная дверь - проверяем, можем ли пройти
+                if neighbor.IsDoor && neighbor.IsLocked {
+                    if neighbor.KeyType == targetKey {
+                        // Это дверь того же типа, что и нужный ключ - можем пройти
+                        visited[neighbor.Position] = true
+                        queue = append(queue, neighbor)
+                    }
+                    // Заблокированные двери других типов пропускаем
+                    continue
+                }
+                
+                visited[neighbor.Position] = true
+                queue = append(queue, neighbor)
+            }
+        }
+    }
+
+    return false
+}
+
+// dfsSearch выполняет поиск в глубину для проверки доступности
+func (gl *GameLogic) dfsSearch(start *GraphNode, targetKey ItemSubType, visited map[Position]bool) bool {
+    if visited == nil {
+        visited = make(map[Position]bool)
+    }
+    
+    visited[start.Position] = true
+
+    // Проверяем, есть ли здесь нужный ключ
+    for _, item := range CurrentGameState.Items {
+        if item.Position.X == start.Position.X && 
+           item.Position.Y == start.Position.Y &&
+           item.Type == Scroll &&
+           item.SubType == targetKey {
+            return true
+        }
+    }
+
+    // Рекурсивно проверяем соседей
+    for _, neighbor := range start.Neighbors {
+        if !visited[neighbor.Position] {
+            // Обрабатываем заблокированные двери
+            if neighbor.IsDoor && neighbor.IsLocked {
+                if neighbor.KeyType == targetKey {
+                    // Можем пройти через дверь того же типа
+                    if gl.dfsSearch(neighbor, targetKey, visited) {
+                        return true
+                    }
+                }
+                continue
+            }
+            
+            if gl.dfsSearch(neighbor, targetKey, visited) {
+                return true
+            }
+        }
+    }
+
+    return false
+}
+
+// validateKeyAccessibility проверяет доступность всех ключей на уровне
+func (gl *GameLogic) validateKeyAccessibility(level *Level) bool {
+    graph := gl.buildAccessibilityGraph(level)
+    
+    // Находим стартовую позицию игрока
+    var startNode *GraphNode
+    for _, node := range graph.Nodes {
+        if node.Position.X == level.StartRoom.X + level.StartRoom.Width/2 &&
+           node.Position.Y == level.StartRoom.Y + level.StartRoom.Height/2 {
+            startNode = node
+            break
+        }
+    }
+    
+    if startNode == nil {
+        return false
+    }
+
+    // Проверяем доступность каждого ключа
+    for _, door := range level.Doors {
+        if door.IsLocked {
+            // Используем BFS для проверки доступности ключа
+            keyAccessible := gl.bfsSearch(startNode, door.Color)
+            
+            if !keyAccessible {
+                gl.AddMessage("WARNING: Key for " + gl.getKeyName(door.Color) + 
+                    " door is not accessible from start!")
+                return false
+            }
+        }
+    }
+
+    return true
 }

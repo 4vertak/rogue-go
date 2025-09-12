@@ -24,9 +24,7 @@ func main() {
 	showMainMenu(ui)
 }
 
-// main.go - исправим строку 70
 func initializeGame() {
-	// Создаем начальное состояние игры
 	CurrentGameState = &GameState{
 		IsRunning: true,
 		Player: &Character{
@@ -56,6 +54,9 @@ func initializeGame() {
 			Width:  80,
 			Height: 24,
 		},
+		PlayerProgress: &ProgressTracker{ // ДОБАВЛЯЕМ ТРЕКЕР ПРОГРЕССА
+			DifficultyLevel: 3, // Средняя сложность
+		},
 		CurrentLevel: 1,
 		GameWon:      false,
 		GameOver:     false,
@@ -64,10 +65,7 @@ func initializeGame() {
 		SleepTurns:   0,
 	}
 
-	// Генерация первого уровня
 	GameActionsImpl.GenerateLevel(1)
-	
-	// Добавляем стартовое сообщение
 	GameActionsImpl.AddMessage("Welcome to Go Rogue! Move with WASD")
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -182,8 +183,15 @@ func (gi *GameInterface) renderMap() {
 				// Проверка предметов
 				for _, item := range CurrentGameState.Items {
 					if item.Position.X == x && item.Position.Y == y {
-						ch = gi.getItemSymbol(item)
-						color = gi.getItemColor(item)
+						// ОСОБАЯ ОБРАБОТКА ДЛЯ КЛЮЧЕЙ
+						if item.Type == Scroll && (item.SubType == KeyRed || item.SubType == KeyBlue || 
+						item.SubType == KeyGreen || item.SubType == KeyYellow) {
+							ch = gi.getKeySymbol(item.SubType)
+							color = gi.getKeyColor(item.SubType)
+						} else {
+							ch = gi.getItemSymbol(item)
+							color = gi.getItemColor(item)
+						}
 					}
 				}
 				
@@ -229,6 +237,38 @@ func (gi *GameInterface) renderMap() {
 	}
 	
 	gi.gameWindow.Refresh()
+}
+
+// Функция для получения символа ключа
+func (gi *GameInterface) getKeySymbol(keyType ItemSubType) string {
+    switch keyType {
+    case KeyRed:
+        return "R"
+    case KeyBlue:
+        return "B"
+    case KeyGreen:
+        return "G"
+    case KeyYellow:
+        return "Y"
+    default:
+        return "K"
+    }
+}
+
+// Функция для получения цвета ключа
+func (gi *GameInterface) getKeyColor(keyType ItemSubType) int16 {
+    switch keyType {
+    case KeyRed:
+        return 1 // Красный
+    case KeyBlue:
+        return 4 // Синий
+    case KeyGreen:
+        return 2 // Зеленый
+    case KeyYellow:
+        return 3 // Желтый
+    default:
+        return 7 // Белый
+    }
 }
 
 func (gi *GameInterface) renderStatus() {
@@ -507,15 +547,35 @@ func (gi *GameInterface) showInventory() {
 			gi.stdscr.Printf("%d. Potion\n", i+1)
 		}
 		
-		gi.stdscr.Print("\nScrolls:\n")
-		for i := range backpack.Scrolls {
-			gi.stdscr.Printf("%d. Scroll\n", i+1)
-		}
-	}
+        gi.stdscr.Print("\nScrolls and Keys:\n")
+        for i, scroll := range backpack.Scrolls {
+            if scroll.SubType == KeyRed || scroll.SubType == KeyBlue || 
+               scroll.SubType == KeyGreen || scroll.SubType == KeyYellow {
+                gi.stdscr.Printf("%d. %s\n", i+1, gi.getKeyName(scroll.SubType))
+            } else {
+                gi.stdscr.Printf("%d. Scroll\n", i+1)
+            }
+        }
+    }
 	
 	gi.stdscr.Print("\nPress any key to continue...")
 	gi.stdscr.Refresh()
 	gi.stdscr.GetChar()
+}
+
+func (gi *GameInterface) getKeyName(keyType ItemSubType) string {
+    switch keyType {
+    case KeyRed:
+        return "Red Key"
+    case KeyBlue:
+        return "Blue Key"
+    case KeyGreen:
+        return "Green Key"
+    case KeyYellow:
+        return "Yellow Key"
+    default:
+        return "Key"
+    }
 }
 
 func (gi *GameInterface) showEquipment() {
@@ -599,38 +659,46 @@ func (gi *GameInterface) showPickupMenu() {
 }
 
 func (gi *GameInterface) getItemName(item *Item) string {
-	switch item.Type {
-	case Weapon:
-		return "Weapon (Str+" + strconv.Itoa(item.StrengthBoost) + ")"
-	case Food:
-		return "Food (HP+" + strconv.Itoa(item.HealthBoost) + ")"
-	case Potion:
-		switch item.SubType {
-		case HealthPotion:
-			return "Health Potion"
-		case AgilityPotion:
-			return "Agility Potion"
-		case StrengthPotion:
-			return "Strength Potion"
-		default:
-			return "Potion"
-		}
-	case Scroll:
-		switch item.SubType {
-		case MaxHealthScroll:
-			return "Max Health Scroll"
-		case AgilityScroll:
-			return "Agility Scroll"
-		case StrengthScroll:
-			return "Strength Scroll"
-		default:
-			return "Scroll"
-		}
-	case Treasure:
-		return "Treasure (" + strconv.Itoa(item.Value) + " gold)"
-	default:
-		return "Unknown item"
-	}
+    switch item.Type {
+    case Weapon:
+        return "Weapon (Str+" + strconv.Itoa(item.StrengthBoost) + ")"
+    case Food:
+        return "Food (HP+" + strconv.Itoa(item.HealthBoost) + ")"
+    case Potion:
+        switch item.SubType {
+        case HealthPotion:
+            return "Health Potion"
+        case AgilityPotion:
+            return "Agility Potion"
+        case StrengthPotion:
+            return "Strength Potion"
+        default:
+            return "Potion"
+        }
+    case Scroll:
+        switch item.SubType {
+        case MaxHealthScroll:
+            return "Max Health Scroll"
+        case AgilityScroll:
+            return "Agility Scroll"
+        case StrengthScroll:
+            return "Strength Scroll"
+        case KeyRed:
+            return "Red Key"
+        case KeyBlue:
+            return "Blue Key"
+        case KeyGreen:
+            return "Green Key"
+        case KeyYellow:
+            return "Yellow Key"
+        default:
+            return "Scroll"
+        }
+    case Treasure:
+        return "Treasure (" + strconv.Itoa(item.Value) + " gold)"
+    default:
+        return "Unknown item"
+    }
 }
 
 func (gi *GameInterface) showQuitMenu() {
@@ -805,37 +873,47 @@ func (gi *GameInterface) getItemColor(item *Item) int16 {
 }
 
 func (gi *GameInterface) getEnemySymbol(enemy *Enemy) string {
-	switch enemy.Type {
-	case Zombie:
-		return "Z"
-	case Vampire:
-		return "V"
-	case Ghost:
-		return "G"
-	case Ogre:
-		return "O"
-	case SnakeMage:
-		return "S"
-	default:
-		return "E"
-	}
+    if enemy.Type == Mimic && enemy.IsDisguised {
+        // Мимик маскируется под случайный предмет
+        itemTypes := []string{"!", "%", "&", "?", "$"}
+        return itemTypes[rand.Intn(len(itemTypes))]
+    }
+    
+    switch enemy.Type {
+    case Zombie:
+        return "Z"
+    case Vampire:
+        return "V"
+    case Ghost:
+        return "G"
+    case Ogre:
+        return "O"
+    case SnakeMage:
+        return "S"
+    case Mimic:
+        return "M"
+    default:
+        return "E"
+    }
 }
 
 func (gi *GameInterface) getEnemyColor(enemy *Enemy) int16 {
-	switch enemy.Type {
-	case Zombie:
-		return 2
-	case Vampire:
-		return 1
-	case Ghost:
-		return 7
-	case Ogre:
-		return 4
-	case SnakeMage:
-		return 5
-	default:
-		return 7
-	}
+    switch enemy.Type {
+    case Zombie:
+        return 2
+    case Vampire:
+        return 1
+    case Ghost:
+        return 7
+    case Ogre:
+        return 4
+    case SnakeMage:
+        return 5
+    case Mimic:
+        return 8 // Новый цвет для мимика
+    default:
+        return 7
+    }
 }
 
 func (gi *GameInterface) initColors() {
@@ -846,4 +924,5 @@ func (gi *GameInterface) initColors() {
 	goncurses.InitPair(5, goncurses.C_MAGENTA, goncurses.C_BLACK)// Зелья, змей-маг
 	goncurses.InitPair(6, goncurses.C_CYAN, goncurses.C_BLACK)   // Игрок, сокровища
 	goncurses.InitPair(7, goncurses.C_WHITE, goncurses.C_BLACK)  // Призрак, по умолчанию
+	goncurses.InitPair(8, goncurses.C_BLACK, goncurses.C_WHITE)  // Mimic (инвертированные цвета)
 }

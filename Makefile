@@ -9,4 +9,4 @@ run: build
 	./rogue-game
 
 clean:
-	rm -f rogue-game statistics.json *.sav go.mod go.sum *.json
+	rm -f rogue-game statistics.json *.sav go.mod go.sum *.json *.json
