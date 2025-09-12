@@ -3,35 +3,36 @@ package main
 // GameState представляет все состояние игры
 type GameState struct {
 	// Игровые сущности
-	Player      *Character
-	Enemies     []*Enemy
-	Items       []*Item
-	Level       *Level
-	Backpack    *Backpack
-	GameSession *GameSession
-	Statistics  *Statistics
-	Camera      *Camera
+	Player         *Character
+	Enemies        []*Enemy
+	Items          []*Item
+	Level          *Level
+	Backpack       *Backpack
+	GameSession    *GameSession
+	Statistics     *Statistics
+	Camera         *Camera
 	PlayerProgress *ProgressTracker // ДОБАВЛЯЕМ ТРЕКЕР ПРОГРЕССА
-	
+	IsPlayerTurn   bool             //игра пошагавая и флаг для хода игрока
+
 	// Флаги состояния
-	IsRunning    bool
-	CurrentLevel int
-	GameWon      bool
-	GameOver     bool
-	SleepTurns   int
-	Messages     []string
+	IsRunning      bool
+	CurrentLevel   int
+	GameWon        bool
+	GameOver       bool
+	SleepTurns     int
+	Messages       []string
 	StatusMessages []string
 }
 
 // Добавим ProgressTracker в GameState
 type ProgressTracker struct {
-    LevelsCompleted    int
-    EnemiesDefeated    int
-    DamageTaken        int
-    DamageDealt        int
-    ItemsUsed          int
-    DifficultyLevel    int
-    LastAdjustmentTime int
+	LevelsCompleted    int
+	EnemiesDefeated    int
+	DamageTaken        int
+	DamageDealt        int
+	ItemsUsed          int
+	DifficultyLevel    int
+	LastAdjustmentTime int
 }
 
 // Character представляет игрока
@@ -49,20 +50,20 @@ type Character struct {
 
 // Enemy представляет противника
 type Enemy struct {
-	Type        EnemyType
-	Health      int
-	Agility     int
-	Strength    int
-	Hostility   int
-	Position    Position
-	IsVisible   bool
-	Pattern     MovementPattern
-	moveCooldown int // Для паттерна TwoStep
-	hasBeenHit bool // Для вампиров
-	attackCooldown int // Для огров после атаки
-	teleportCooldown int // Для призраков
-	invisibilityCooldown int // Для призраков
-	IsDisguised bool
+	Type                 EnemyType
+	Health               int
+	Agility              int
+	Strength             int
+	Hostility            int
+	Position             Position
+	IsVisible            bool
+	Pattern              MovementPattern
+	moveCooldown         int  // Для паттерна TwoStep
+	hasBeenHit           bool // Для вампиров
+	attackCooldown       int  // Для огров после атаки
+	teleportCooldown     int  // Для призраков
+	invisibilityCooldown int  // Для призраков
+	IsDisguised          bool
 }
 
 // Item представляет предмет
@@ -75,7 +76,7 @@ type Item struct {
 	StrengthBoost  int
 	Value          int
 	Position       Position
-	Name		   string
+	Name           string
 }
 
 // Level представляет игровой уровень
@@ -85,18 +86,25 @@ type Level struct {
 	StartRoom  *Room
 	ExitRoom   *Room
 	Grid       [][]Cell
-	Discovered [][]bool
+	Discovered [][]Cell
 	Visible    [][]bool
-	Doors      []*Door  // ДОБАВЛЯЕМ ДВЕРИ
+	Doors      []*Door // ДОБАВЛЯЕМ ДВЕРИ
 }
 
 // Room представляет комнату
 type Room struct {
 	X, Y, Width, Height int
+	GridX, GridY        int // позиция в сетке
 	Enemies             []*Enemy
 	Items               []*Item
 	IsStart             bool
 	IsExit              bool
+}
+
+type Edge struct {
+	U      int
+	V      int
+	Weight float64
 }
 
 // Corridor представляет коридор
@@ -147,20 +155,21 @@ type Position struct {
 
 // Cell представляет клетку карты
 type Cell struct {
-	IsWall      bool
-	IsCorridor  bool
+	IsWall       bool
+	IsCorridor   bool
 	IsDiscovered bool
-	IsVisible   bool
+	IsVisible    bool
 }
 
 // Camera представляет камеру для отображения карты
 type Camera struct {
-	X, Y int
+	X, Y          int
 	Width, Height int
 }
 
 // EnemyType представляет тип противника
 type EnemyType int
+
 const (
 	Zombie EnemyType = iota
 	Vampire
@@ -172,6 +181,7 @@ const (
 
 // ItemType представляет тип предмета
 type ItemType int
+
 const (
 	Treasure ItemType = iota
 	Food
@@ -182,6 +192,7 @@ const (
 
 // ItemSubType представляет подтип предмета
 type ItemSubType int
+
 const (
 	HealthPotion ItemSubType = iota
 	AgilityPotion
@@ -191,7 +202,7 @@ const (
 	StrengthScroll
 	Sword
 	Axe
-	KeyRed    // ДОБАВЛЯЕМ КЛЮЧИ
+	KeyRed // ДОБАВЛЯЕМ КЛЮЧИ
 	KeyBlue
 	KeyGreen
 	KeyYellow
@@ -199,13 +210,14 @@ const (
 
 // Тип для дверей
 type Door struct {
-    Position  Position
-    Color     ItemSubType
-    IsLocked  bool
+	Position Position
+	Color    ItemSubType
+	IsLocked bool
 }
 
 // MovementPattern представляет паттерн движения
 type MovementPattern int
+
 const (
 	Random MovementPattern = iota
 	Chase
@@ -216,6 +228,7 @@ const (
 
 // EffectType представляет тип эффекта
 type EffectType int
+
 const (
 	HealthEffect EffectType = iota
 	AgilityEffect
@@ -230,14 +243,14 @@ type GameActions interface {
 	UseItem(itemType ItemType, index int)
 	PickUpItem()
 	Attack(enemyIndex int)
-	
+
 	// Генерация
 	GenerateLevel(levelNum int)
-	
+
 	// Сохранение/загрузка
 	SaveGame(filename string) error
 	LoadGame(filename string) error
-	
+
 	// Обновление состояния
 	UpdateGameState()
 	CheckGameConditions()
@@ -250,30 +263,30 @@ var CurrentGameState *GameState
 var GameActionsImpl GameActions
 
 func max(a, b int) int {
-    if a > b {
-        return a
-    }
-    return b
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func min(a, b int) int {
-    if a < b {
-        return a
-    }
-    return b
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // GraphNode представляет узел в графе доступности
 type GraphNode struct {
-    Position  Position
-    IsDoor    bool
-    IsLocked  bool
-    KeyType   ItemSubType
-    Neighbors []*GraphNode
-    Visited   bool
+	Position  Position
+	IsDoor    bool
+	IsLocked  bool
+	KeyType   ItemSubType
+	Neighbors []*GraphNode
+	Visited   bool
 }
 
 // AccessibilityGraph представляет граф доступности уровня
 type AccessibilityGraph struct {
-    Nodes []*GraphNode
+	Nodes []*GraphNode
 }

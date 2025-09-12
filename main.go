@@ -10,7 +10,7 @@ import (
 func main() {
 	// Инициализация состояния игры
 	initializeGame()
-	
+
 	// Инициализация интерфейса
 	ui := &GameInterface{}
 	if err := ui.Initialize(); err != nil {
@@ -57,12 +57,13 @@ func initializeGame() {
 		PlayerProgress: &ProgressTracker{ // ДОБАВЛЯЕМ ТРЕКЕР ПРОГРЕССА
 			DifficultyLevel: 3, // Средняя сложность
 		},
-		CurrentLevel: 1,
-		GameWon:      false,
-		GameOver:     false,
-		Messages:     make([]string, 0),
+		CurrentLevel:   1,
+		GameWon:        false,
+		GameOver:       false,
+		Messages:       make([]string, 0),
 		StatusMessages: make([]string, 0),
-		SleepTurns:   0,
+		SleepTurns:     0,
+		IsPlayerTurn:   true, //игра пошагавая и флаг для хода игрока
 	}
 
 	GameActionsImpl.GenerateLevel(1)
@@ -99,15 +100,15 @@ func showMainMenu(ui *GameInterface) {
 func startNewGame(ui *GameInterface) {
 	// Переинициализируем игру
 	initializeGame()
-	
+
 	// Запускаем игровой цикл
 	ui.Run()
-	
+
 	// После завершения игры добавляем результат в таблицу рекордов
 	if CurrentGameState.GameOver || CurrentGameState.GameWon {
 		addToHighScores()
 	}
-	
+
 	// Возвращаемся в главное меню
 	showMainMenu(ui)
 }
@@ -125,7 +126,7 @@ func loadGame(ui *GameInterface) {
 		} else {
 			ui.showMessage("Game loaded successfully!")
 			ui.Run()
-			
+
 			if CurrentGameState.GameOver || CurrentGameState.GameWon {
 				addToHighScores()
 			}
@@ -143,7 +144,7 @@ func showHighScores(ui *GameInterface) {
 		// Сортируем результаты по количеству сокровищ (по убыванию)
 		sortedScores := make([]*GameSession, len(CurrentGameState.Statistics.BestScores))
 		copy(sortedScores, CurrentGameState.Statistics.BestScores)
-		
+
 		for i := 0; i < len(sortedScores)-1; i++ {
 			for j := i + 1; j < len(sortedScores); j++ {
 				if sortedScores[i].Treasures < sortedScores[j].Treasures {
@@ -154,12 +155,12 @@ func showHighScores(ui *GameInterface) {
 
 		ui.stdscr.Print("Rank | Level | Treasures | Enemies\n")
 		ui.stdscr.Print("-----+-------+-----------+--------\n")
-		
+
 		for i, score := range sortedScores {
 			if i >= 10 {
 				break
 			}
-			ui.stdscr.Printf("%4d | %5d | %9d | %7d\n", 
+			ui.stdscr.Printf("%4d | %5d | %9d | %7d\n",
 				i+1, score.LevelReached, score.Treasures, score.EnemiesDefeated)
 		}
 	}
@@ -167,7 +168,7 @@ func showHighScores(ui *GameInterface) {
 	ui.stdscr.Print("\nPress any key to return...")
 	ui.stdscr.Refresh()
 	// Устанавливаем блокирующий ввод
-    ui.stdscr.Timeout(-1)
+	ui.stdscr.Timeout(-1)
 	ui.stdscr.GetChar()
 	ui.stdscr.Timeout(100) // Возвращаем неблокирующий ввод
 }
@@ -203,7 +204,7 @@ func saveStatistics() {
 	if CurrentGameState.Statistics == nil {
 		return
 	}
-	
+
 	data, err := json.MarshalIndent(CurrentGameState.Statistics, "", "  ")
 	if err != nil {
 		return
