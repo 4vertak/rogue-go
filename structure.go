@@ -3,6 +3,15 @@ package main
 // GameState представляет все состояние игры
 type GameState struct {
 	// Игровые сущности
+	Player      *Character
+	Enemies     []*Enemy
+	Items       []*Item
+	Level       *Level
+	Backpack    *Backpack
+	GameSession *GameSession
+	Statistics  *Statistics
+	Camera      *Camera
+
 	Player         *Character
 	Enemies        []*Enemy
 	Items          []*Item
@@ -15,6 +24,13 @@ type GameState struct {
 	IsPlayerTurn   bool             //игра пошагавая и флаг для хода игрока
 
 	// Флаги состояния
+	IsRunning    bool
+	CurrentLevel int
+	GameWon      bool
+	GameOver     bool
+
+	Messages       []string
+	StatusMessages []string // Отдельные сообщения для статуса
 	IsRunning      bool
 	CurrentLevel   int
 	GameWon        bool
@@ -50,6 +66,14 @@ type Character struct {
 
 // Enemy представляет противника
 type Enemy struct {
+	Type                 EnemyType
+	Health               int
+	Agility              int
+	Strength             int
+	Hostility            int
+	Position             Position
+	IsVisible            bool
+	Pattern              MovementPattern
 	Type                 EnemyType
 	Health               int
 	Agility              int
@@ -157,12 +181,16 @@ type Position struct {
 type Cell struct {
 	IsWall       bool
 	IsCorridor   bool
+	IsWall       bool
+	IsCorridor   bool
 	IsDiscovered bool
+	IsVisible    bool
 	IsVisible    bool
 }
 
 // Camera представляет камеру для отображения карты
 type Camera struct {
+	X, Y          int
 	X, Y          int
 	Width, Height int
 }
@@ -224,6 +252,7 @@ const (
 	Teleport
 	Diagonal
 	TwoStep
+	Imitator
 )
 
 // EffectType представляет тип эффекта
