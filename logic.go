@@ -2208,4 +2208,40 @@ func (gl *GameLogic) validateKeyAccessibility(level *Level) bool {
 	}
 
 	return true
+	// Проверяем доступность каждого ключа
+	for _, door := range level.Doors {
+		if door.IsLocked {
+			// Используем BFS для проверки доступности ключа
+			keyAccessible := gl.bfsSearch(startNode, door.Color)
+
+			if !keyAccessible {
+				gl.AddMessage("WARNING: Key for " + gl.getKeyName(door.Color) +
+					" door is not accessible from start!")
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func (gl *GameLogic) canMoveTo3D(x, y int) bool {
+	if x < 0 || x >= len(CurrentGameState.Level.Grid) ||
+		y < 0 || y >= len(CurrentGameState.Level.Grid[0]) {
+		return false
+	}
+
+	// Проверяем стену
+	if CurrentGameState.Level.Grid[x][y].IsWall {
+		return false
+	}
+
+	// Проверяем заблокированную дверь
+	for _, door := range CurrentGameState.Level.Doors {
+		if door.Position.X == x && door.Position.Y == y && door.IsLocked {
+			return false
+		}
+	}
+
+	return true
 }

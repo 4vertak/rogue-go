@@ -11,8 +11,11 @@ type GameState struct {
 	GameSession    *GameSession
 	Statistics     *Statistics
 	Camera         *Camera
-	PlayerProgress *ProgressTracker // ДОБАВЛЯЕМ ТРЕКЕР ПРОГРЕССА
-	IsPlayerTurn   bool             //игра пошагавая и флаг для хода игрока
+	PlayerProgress *ProgressTracker // ТРЕКЕР ПРОГРЕССА
+	RenderMode     RenderMode       // 2D или 3D
+	PlayerAngle    float64          // Угол поворота игрока в 3D
+	PlayerDir      PositionF        // Направление взгляда
+	PlayerPlane    PositionF        // Плоскость камеры
 
 	// Флаги состояния
 	IsRunning      bool
@@ -23,6 +26,17 @@ type GameState struct {
 	Messages       []string
 	StatusMessages []string
 }
+
+type PositionF struct {
+	X, Y float64
+}
+
+type RenderMode int
+
+const (
+	Render2D RenderMode = iota
+	Render3D
+)
 
 // Добавим ProgressTracker в GameState
 type ProgressTracker struct {
@@ -289,4 +303,12 @@ type GraphNode struct {
 // AccessibilityGraph представляет граф доступности уровня
 type AccessibilityGraph struct {
 	Nodes []*GraphNode
+}
+
+// Добавим вспомогательную функцию abs для int
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
