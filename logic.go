@@ -2,11 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"math"
 	"math/rand"
 	"os"
-	"sort"
 	"strconv"
 	"time"
 )
@@ -20,12 +17,6 @@ func init() {
 }
 
 func (gl *GameLogic) MovePlayer(dx, dy int) {
-	// ждем свой очереди для хода
-	if !CurrentGameState.IsPlayerTurn {
-		gl.AddMessage("Wait your turn!")
-		return
-	}
-
 	// Проверяем, не усыплен ли игрок
 	if CurrentGameState.SleepTurns > 0 {
 		CurrentGameState.SleepTurns--
@@ -71,21 +62,7 @@ func (gl *GameLogic) MovePlayer(dx, dy int) {
 		gl.checkForAutomaticExit()
 		gl.checkForEnemies() // Бой при движении игрока
 		gl.checkForExit()
-
 	}
-	CurrentGameState.IsPlayerTurn = false
-}
-
-func (gl *GameLogic) EnemyTurn() {
-	if CurrentGameState.IsPlayerTurn {
-		return
-	}
-
-	// Логика движения врагов
-	gl.moveEnemies()
-
-	// После хода врагов
-	CurrentGameState.IsPlayerTurn = true
 }
 
 func (gl *GameLogic) checkForAutomaticExit() {
@@ -373,7 +350,7 @@ func (gl *GameLogic) GenerateLevel(levelNum int) {
 
 	level := &Level{
 		Grid:       make([][]Cell, mapWidth),
-		Discovered: make([][]Cell, mapWidth),
+		Discovered: make([][]bool, mapWidth),
 		Visible:    make([][]bool, mapWidth),
 		Rooms:      make([]*Room, 0),
 		Corridors:  make([]*Corridor, 0),
@@ -381,12 +358,11 @@ func (gl *GameLogic) GenerateLevel(levelNum int) {
 
 	for i := range level.Grid {
 		level.Grid[i] = make([]Cell, mapHeight)
-		level.Discovered[i] = make([]Cell, mapHeight)
+		level.Discovered[i] = make([]bool, mapHeight)
 		level.Visible[i] = make([]bool, mapHeight)
 		for j := range level.Grid[i] {
 			level.Grid[i][j].IsWall = true // Изначально все стены
 		}
-
 	}
 
 	// Генерируем комнаты в сетке 3x3
@@ -507,8 +483,6 @@ func (gl *GameLogic) createRoomInGridCell(level *Level, gridX, gridY, gridSize i
 		Y:       y,
 		Width:   roomWidth,
 		Height:  roomHeight,
-		GridX:   gridX,
-		GridY:   gridY,
 		Enemies: make([]*Enemy, 0),
 		Items:   make([]*Item, 0),
 	}
@@ -517,7 +491,7 @@ func (gl *GameLogic) createRoomInGridCell(level *Level, gridX, gridY, gridSize i
 	for i := x; i < x+roomWidth; i++ {
 		for j := y; j < y+roomHeight; j++ {
 			if i >= 0 && i < len(level.Grid) && j >= 0 && j < len(level.Grid[0]) {
-				level.Grid[i][j].IsWall = false // может также как и полы залить?
+				level.Grid[i][j].IsWall = false
 			}
 		}
 	}
@@ -527,163 +501,55 @@ func (gl *GameLogic) createRoomInGridCell(level *Level, gridX, gridY, gridSize i
 }
 
 func (gl *GameLogic) connectRoomsWithCorridors(level *Level) {
-	if len(level.Rooms) <= 1 {
-		return
-	}
+	// Соединяем комнаты в порядке их создания
+	for i := 0; i < len(level.Rooms)-1; i++ {
+		room1 := level.Rooms[i]
+		room2 := level.Rooms[i+1]
 
-	var edges []Edge
-	roomMap := make(map[string]int)
+		center1X := room1.X + room1.Width/2
+		center1Y := room1.Y + room1.Height/2
+		center2X := room2.X + room2.Width/2
+		center2Y := room2.Y + room2.Height/2
 
-	for i, room := range level.Rooms {
-		key := fmt.Sprintf("%d,%d", room.GridX, room.GridY)
-		roomMap[key] = i
-	}
-
-	for i, room := range level.Rooms {
-		rightKey := fmt.Sprintf("%d,%d", room.GridX+1, room.GridY)
-		if j, exists := roomMap[rightKey]; exists {
-			weight := gl.distanceBetweenRooms(room, level.Rooms[j])
-			edges = append(edges, Edge{U: i, V: j, Weight: weight})
-		}
-		downKey := fmt.Sprintf("%d,%d", room.GridX, room.GridY+1)
-		if j, exists := roomMap[downKey]; exists {
-			weight := gl.distanceBetweenRooms(room, level.Rooms[j])
-			edges = append(edges, Edge{U: i, V: j, Weight: weight})
-		}
-	}
-
-	sort.Slice(edges, func(i, j int) bool {
-		return edges[i].Weight < edges[j].Weight
-	})
-
-	// из примера DSU (система непересекающихся множеств)
-	parent := make([]int, len(level.Rooms))
-	for i := range parent {
-		parent[i] = i
-	}
-
-	var find func(int) int
-	find = func(x int) int {
-		if parent[x] != x {
-			parent[x] = find(parent[x])
-		}
-		return parent[x]
-	}
-
-	union := func(x, y int) {
-		parent[find(x)] = find(y)
-	}
-	// Минимальное остовеое дерево
-	var mstEdges []Edge
-	for _, edge := range edges {
-		if find(edge.U) != find(edge.V) {
-			union(edge.U, edge.V)
-			mstEdges = append(mstEdges, edge)
-			gl.connectTwoRooms(level, level.Rooms[edge.U], level.Rooms[edge.V])
-		}
-	}
-
-	for {
-		comps := make(map[int][]int)
-		for i := range level.Rooms {
-			root := find(i)
-			comps[root] = append(comps[root], i)
-		}
-		if len(comps) <= 1 {
-			break
+		// Создаем L-образный коридор
+		corridorWidth := 1
+		corridor := &Corridor{
+			Start: Position{X: center1X, Y: center1Y},
+			End:   Position{X: center2X, Y: center2Y},
+			Width: corridorWidth,
 		}
 
-		var bestEdge *Edge
-		bestDist := math.MaxFloat64
-		var roots []int
-		for k := range comps {
-			roots = append(roots, k)
+		// Горизонтальная часть
+		startX, endX := center1X, center2X
+		if startX > endX {
+			startX, endX = endX, startX
 		}
-
-		for _, a := range comps[roots[0]] {
-			for _, b := range comps[roots[1]] {
-				dist := gl.distanceBetweenRooms(level.Rooms[a], level.Rooms[b])
-				if dist < bestDist {
-					bestDist = dist
-					bestEdge = &Edge{U: a, V: b, Weight: dist}
+		for x := startX; x <= endX; x++ {
+			for w := 0; w < corridorWidth; w++ {
+				y := center1Y + w
+				if x >= 0 && x < len(level.Grid) && y >= 0 && y < len(level.Grid[0]) {
+					level.Grid[x][y].IsWall = false
+					level.Grid[x][y].IsCorridor = true
 				}
 			}
 		}
 
-		if bestEdge != nil {
-			union(bestEdge.U, bestEdge.V)
-			mstEdges = append(mstEdges, *bestEdge)
-			gl.connectTwoRooms(level, level.Rooms[bestEdge.U], level.Rooms[bestEdge.V])
+		// Вертикальная часть
+		startY, endY := center1Y, center2Y
+		if startY > endY {
+			startY, endY = endY, startY
 		}
-	}
-
-	extraConnections := int(math.Sqrt(float64(len(level.Rooms))))
-	for i := 0; i < extraConnections && i < len(edges); i++ {
-		randomEdge := edges[rand.Intn(len(edges))]
-		if find(randomEdge.U) != find(randomEdge.V) {
-			union(randomEdge.U, randomEdge.V)
-			gl.connectTwoRooms(level, level.Rooms[randomEdge.U], level.Rooms[randomEdge.V])
+		for y := startY; y <= endY; y++ {
+			for w := 0; w < corridorWidth; w++ {
+				x := center2X + w
+				if x >= 0 && x < len(level.Grid) && y >= 0 && y < len(level.Grid[0]) {
+					level.Grid[x][y].IsWall = false
+					level.Grid[x][y].IsCorridor = true
+				}
+			}
 		}
-	}
-}
 
-// для расчета расстояния между комнами
-func (gl *GameLogic) distanceBetweenRooms(room1, room2 *Room) float64 {
-	x1 := room1.X + room1.Width/2
-	y1 := room1.Y + room1.Height/2
-	x2 := room2.X + room2.Width/2
-	y2 := room2.Y + room2.Height/2
-
-	dx := float64(x1 - x2)
-	dy := float64(y1 - y2)
-	return math.Sqrt(dx*dx + dy*dy)
-}
-
-// для соединения  комнат
-func (gl *GameLogic) connectTwoRooms(level *Level, room1, room2 *Room) {
-
-	x1 := room1.X + room1.Width/2
-	y1 := room1.Y + room1.Height/2
-	x2 := room2.X + room2.Width/2
-	y2 := room2.Y + room2.Height/2
-
-	// L образный коридор
-	if rand.Intn(2) == 0 {
-
-		gl.createHorizontalCorridor(level, x1, y1, x2, y1)
-		gl.createVerticalCorridor(level, x2, y1, x2, y2)
-	} else {
-
-		gl.createVerticalCorridor(level, x1, y1, x1, y2)
-		gl.createHorizontalCorridor(level, x1, y2, x2, y2)
-	}
-}
-
-func (gl *GameLogic) createHorizontalCorridor(level *Level, x1, y1, x2, y2 int) {
-	start, end := x1, x2
-	if start > end {
-		start, end = end, start
-	}
-
-	for x := start; x <= end; x++ {
-		if x >= 0 && x < len(level.Grid) && y1 >= 0 && y1 < len(level.Grid[0]) {
-			level.Grid[x][y1].IsWall = false
-			level.Grid[x][y1].IsCorridor = true
-		}
-	}
-}
-
-func (gl *GameLogic) createVerticalCorridor(level *Level, x1, y1, x2, y2 int) {
-	start, end := y1, y2
-	if start > end {
-		start, end = end, start
-	}
-
-	for y := start; y <= end; y++ {
-		if x1 >= 0 && x1 < len(level.Grid) && y >= 0 && y < len(level.Grid[0]) {
-			level.Grid[x1][y].IsWall = false
-			level.Grid[x1][y].IsCorridor = true
-		}
+		level.Corridors = append(level.Corridors, corridor)
 	}
 }
 
@@ -973,9 +839,6 @@ func (gl *GameLogic) LoadGame(filename string) error {
 }
 
 func (gl *GameLogic) UpdateGameState() {
-	if CurrentGameState.IsPlayerTurn {
-		return
-	}
 	// Обновляем видимость
 	gl.updateVisibility()
 
@@ -999,7 +862,6 @@ func (gl *GameLogic) UpdateGameState() {
 
 	// Обновляем эффекты
 	gl.updateEffects()
-	CurrentGameState.IsPlayerTurn = true
 }
 
 func (gl *GameLogic) updateEffects() {
@@ -1439,7 +1301,7 @@ func (gl *GameLogic) updateVisibility() {
 				// Проверяем лучами видимость
 				if gl.hasLineOfSight(playerPos, Position{X: x, Y: y}) {
 					CurrentGameState.Level.Visible[x][y] = true
-					CurrentGameState.Level.Discovered[x][y] = CurrentGameState.Level.Grid[x][y]
+					CurrentGameState.Level.Discovered[x][y] = true
 				}
 			}
 		}
@@ -1703,13 +1565,6 @@ func (gl *GameLogic) updateCamera() {
 	if cam.Y+cam.Height >= len(CurrentGameState.Level.Grid[0]) {
 		cam.Y = len(CurrentGameState.Level.Grid[0]) - cam.Height
 	}
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
 }
 
 func isItemMessage(message string) bool {
@@ -2193,21 +2048,6 @@ func (gl *GameLogic) validateKeyAccessibility(level *Level) bool {
 		return false
 	}
 
-	// Проверяем доступность каждого ключа
-	for _, door := range level.Doors {
-		if door.IsLocked {
-			// Используем BFS для проверки доступности ключа
-			keyAccessible := gl.bfsSearch(startNode, door.Color)
-
-			if !keyAccessible {
-				gl.AddMessage("WARNING: Key for " + gl.getKeyName(door.Color) +
-					" door is not accessible from start!")
-				return false
-			}
-		}
-	}
-
-	return true
 	// Проверяем доступность каждого ключа
 	for _, door := range level.Doors {
 		if door.IsLocked {

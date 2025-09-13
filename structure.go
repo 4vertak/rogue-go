@@ -100,7 +100,7 @@ type Level struct {
 	StartRoom  *Room
 	ExitRoom   *Room
 	Grid       [][]Cell
-	Discovered [][]Cell
+	Discovered [][]bool
 	Visible    [][]bool
 	Doors      []*Door // ДОБАВЛЯЕМ ДВЕРИ
 }
@@ -108,17 +108,10 @@ type Level struct {
 // Room представляет комнату
 type Room struct {
 	X, Y, Width, Height int
-	GridX, GridY        int // позиция в сетке
 	Enemies             []*Enemy
 	Items               []*Item
 	IsStart             bool
 	IsExit              bool
-}
-
-type Edge struct {
-	U      int
-	V      int
-	Weight float64
 }
 
 // Corridor представляет коридор

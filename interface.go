@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/rand"
 	"strconv"
+	"time"
 
 	"github.com/rthornton128/goncurses"
 )
@@ -94,19 +95,15 @@ func (gi *GameInterface) Run() {
 
 	gi.renderInitialScreen()
 
-	// Неблокирующий ввод - переделал под блокирующий ввод (для пошагового режима)
-	gi.stdscr.Timeout(-1)
+	// Неблокирующий ввод
+	gi.stdscr.Timeout(100)
 
 	for CurrentGameState.IsRunning {
 		gi.renderGame()
 		gi.handleInput()
 
-		if CurrentGameState.IsPlayerTurn {
-			gi.handleInput()
-		} else { // весь мир ждет хода игорока ))
-			if !CurrentGameState.GameOver {
-				GameActionsImpl.UpdateGameState()
-			}
+		if !CurrentGameState.GameOver {
+			GameActionsImpl.UpdateGameState()
 		}
 
 		if CurrentGameState.GameOver {
@@ -117,7 +114,7 @@ func (gi *GameInterface) Run() {
 		// УБИРАЕМ проверку GameWon здесь, так как переход на следующий уровень
 		// теперь обрабатывается через nextLevel()
 
-		// time.Sleep(50 * time.Millisecond) // не нужен
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -133,6 +130,7 @@ func (gi *GameInterface) renderInitialScreen() {
 }
 
 func (gi *GameInterface) renderGame() {
+	CurrentGameState.RenderMode = 1
 	if CurrentGameState.RenderMode == Render3D {
 		gi.render3D()
 	} else {
@@ -269,24 +267,8 @@ func (gi *GameInterface) renderMap() {
 				if color > 0 {
 					gi.gameWindow.ColorOff(color)
 				}
-			} else if CurrentGameState.Level.Discovered[x][y].IsWall || CurrentGameState.Level.Discovered[x][y].IsCorridor {
-				cell := CurrentGameState.Level.Grid[x][y]
-				var ch string
-				var color int16 = 0
-
-				if cell.IsWall {
-					ch = "#"
-					color = 1
-				} else {
-					ch = " "
-				}
-				if color > 0 {
-					gi.gameWindow.ColorOn(color)
-				}
-				gi.gameWindow.MovePrint(screenY, screenX, ch)
-				if color > 0 {
-					gi.gameWindow.ColorOff(color)
-				}
+			} else if CurrentGameState.Level.Discovered[x][y] {
+				gi.gameWindow.MovePrint(screenY, screenX, " ")
 			} else {
 				gi.gameWindow.MovePrint(screenY, screenX, " ")
 			}
@@ -433,50 +415,7 @@ func (gi *GameInterface) renderInventory() {
 
 func (gi *GameInterface) handleInput() {
 	char := gi.stdscr.GetChar()
-	//только если ход игрока - избыточно но навярняка)
-	if !CurrentGameState.IsPlayerTurn {
-		return
-	}
 
-	if CurrentGameState.SleepTurns > 0 {
-		GameActionsImpl.AddMessage("You are asleep! (" + strconv.Itoa(CurrentGameState.SleepTurns) + " turns remaining)")
-		CurrentGameState.SleepTurns--
-		return
-	}
-
-	switch char {
-	// движение WASD + стрелки
-	case goncurses.KEY_UP, 'w', 'W':
-		GameActionsImpl.MovePlayer(0, -1)
-	case goncurses.KEY_DOWN, 's', 'S':
-		GameActionsImpl.MovePlayer(0, 1)
-	case goncurses.KEY_LEFT, 'a', 'A':
-		GameActionsImpl.MovePlayer(-1, 0)
-	case goncurses.KEY_RIGHT, 'd', 'D':
-		GameActionsImpl.MovePlayer(1, 0)
-
-	// Управление инвентарём / использование предметов
-	case 'h', 'H': // Оружие
-		gi.showUseItemMenu(Weapon)
-	case 'j', 'J': // Еда
-		gi.showUseItemMenu(Food)
-	case 'k', 'K': // Эликсиры / Potion
-		gi.showUseItemMenu(Potion)
-	case 'e', 'E': // Свитки / Scroll
-		gi.showUseItemMenu(Scroll)
-
-	// дополнительные удобства
-	case 'i', 'I':
-		gi.showInventory()
-	case 'p', 'P':
-		gi.showPickupMenu()
-	case 'q', 'Q':
-		gi.showQuitMenu()
-	case 'v', 'V':
-		gi.showSaveMenu()
-	case 'o', 'O':
-		gi.showLoadMenu()
-	}
 	if CurrentGameState.RenderMode == Render3D {
 		gi.handle3DInput(char)
 		return
@@ -1142,22 +1081,6 @@ func (gi *GameInterface) getEnemyColor(enemy *Enemy) int16 {
 	case SnakeMage:
 		return 5
 	case Mimic:
-		return 8 // Новый цвет для мимика
-	default:
-		return 7
-	}
-	switch enemy.Type {
-	case Zombie:
-		return 2
-	case Vampire:
-		return 1
-	case Ghost:
-		return 7
-	case Ogre:
-		return 4
-	case SnakeMage:
-		return 5
-	case Mimic:
 		return 13 // Используем новую пару
 	default:
 		return 7
@@ -1165,14 +1088,6 @@ func (gi *GameInterface) getEnemyColor(enemy *Enemy) int16 {
 }
 
 func (gi *GameInterface) initColors() {
-	goncurses.InitPair(1, goncurses.C_RED, goncurses.C_BLACK)     // Стены
-	goncurses.InitPair(2, goncurses.C_GREEN, goncurses.C_BLACK)   // Коридоры, еда
-	goncurses.InitPair(3, goncurses.C_YELLOW, goncurses.C_BLACK)  // Выход, свитки
-	goncurses.InitPair(4, goncurses.C_BLUE, goncurses.C_BLACK)    // Оружие
-	goncurses.InitPair(5, goncurses.C_MAGENTA, goncurses.C_BLACK) // Зелья, змей-маг
-	goncurses.InitPair(6, goncurses.C_CYAN, goncurses.C_BLACK)    // Игрок, сокровища
-	goncurses.InitPair(7, goncurses.C_WHITE, goncurses.C_BLACK)   // Призрак, по умолчанию
-	goncurses.InitPair(8, goncurses.C_BLACK, goncurses.C_WHITE)   // Mimic (инвертированные цвета)
 	goncurses.InitPair(1, goncurses.C_RED, goncurses.C_BLACK)     // Стены
 	goncurses.InitPair(2, goncurses.C_GREEN, goncurses.C_BLACK)   // Коридоры, еда
 	goncurses.InitPair(3, goncurses.C_YELLOW, goncurses.C_BLACK)  // Выход, свитки
