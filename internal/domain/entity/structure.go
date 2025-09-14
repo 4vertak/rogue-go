@@ -1,4 +1,4 @@
-package main
+package entity
 
 // GameState представляет все состояние игры
 type GameState struct {
@@ -72,11 +72,11 @@ type Enemy struct {
 	Position             Position
 	IsVisible            bool
 	Pattern              MovementPattern
-	moveCooldown         int  // Для паттерна TwoStep
-	hasBeenHit           bool // Для вампиров
-	attackCooldown       int  // Для огров после атаки
-	teleportCooldown     int  // Для призраков
-	invisibilityCooldown int  // Для призраков
+	MoveCooldown         int  // Для паттерна TwoStep
+	HasBeenHit           bool // Для вампиров
+	AttackCooldown       int  // Для огров после атаки
+	TeleportCooldown     int  // Для призраков
+	InvisibilityCooldown int  // Для призраков
 	IsDisguised          bool
 }
 
@@ -100,7 +100,7 @@ type Level struct {
 	StartRoom  *Room
 	ExitRoom   *Room
 	Grid       [][]Cell
-	Discovered [][]bool
+	Discovered [][]Cell
 	Visible    [][]bool
 	Doors      []*Door // ДОБАВЛЯЕМ ДВЕРИ
 }
@@ -108,6 +108,7 @@ type Level struct {
 // Room представляет комнату
 type Room struct {
 	X, Y, Width, Height int
+	GridX, GridY        int // позиция в сетке
 	Enemies             []*Enemy
 	Items               []*Item
 	IsStart             bool
@@ -118,6 +119,12 @@ type Room struct {
 type Corridor struct {
 	Start, End Position
 	Width      int
+}
+
+type Edge struct {
+	U      int
+	V      int
+	Weight float64
 }
 
 // Backpack представляет рюкзак
@@ -269,20 +276,6 @@ type GameActions interface {
 var CurrentGameState *GameState
 var GameActionsImpl GameActions
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // GraphNode представляет узел в графе доступности
 type GraphNode struct {
 	Position  Position
@@ -299,9 +292,3 @@ type AccessibilityGraph struct {
 }
 
 // Добавим вспомогательную функцию abs для int
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}

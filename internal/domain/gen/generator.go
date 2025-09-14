@@ -1,0 +1,882 @@
+package gen
+
+import (
+	"fmt"
+	"math"
+	"math/rand"
+	"sort"
+	"strconv"
+
+	"rogue-go/internal/domain/entity"
+	"rogue-go/internal/domain/utils"
+)
+
+// параметры генерации
+type Config struct{ CellW, CellH, MinRW, MinRH int }
+
+func GenerateLevel(levelNum int, state *entity.GameState) *entity.Level {
+	// Создаем уровень фиксированного размера как в классическом Rogue
+	mapWidth := 80
+	mapHeight := 35
+
+	level := &entity.Level{
+		Grid:       make([][]entity.Cell, mapWidth),
+		Discovered: make([][]entity.Cell, mapWidth),
+		Visible:    make([][]bool, mapWidth),
+		Rooms:      make([]*entity.Room, 0),
+		Corridors:  make([]*entity.Corridor, 0),
+		// Doors:      make([]*entity.Door, 0),
+	}
+
+	for i := range level.Grid {
+		level.Grid[i] = make([]entity.Cell, mapHeight)
+		level.Discovered[i] = make([]entity.Cell, mapHeight)
+		level.Visible[i] = make([]bool, mapHeight)
+		for j := range level.Grid[i] {
+			level.Grid[i][j].IsWall = true // Изначально все стены
+		}
+	}
+
+	// Генерируем комнаты в сетке 3x3
+	generateRoomsInGrid(level)
+	// Соединяем комнаты коридорами
+	connectRoomsWithCorridors(level)
+	// Заполняем уровень врагами и предметами
+	populateLevel(level, levelNum, state)
+
+	// на всякий случай обновим видимость
+	// rules.UpdateVisibility(state)
+
+	return level
+}
+
+func generateRoomsInGrid(level *entity.Level) {
+	gridSize := 3
+	roomsCreated := 0
+	// Гарантированно создаем минимум 3 комнат
+	for roomsCreated < 3 {
+		for gridY := 0; gridY < gridSize && roomsCreated < 3; gridY++ {
+			for gridX := 0; gridX < gridSize && roomsCreated < 3; gridX++ {
+				// 70% chance to create a room in this grid cell
+				if roomsCreated < 3 || rand.Intn(100) <= 80 {
+					if createRoomInGridCell(level, gridX, gridY, gridSize) { // Убираем levelNum
+						roomsCreated++
+					}
+				}
+			}
+		}
+	}
+	// Устанавливаем стартовую и выходную комнаты
+	if len(level.Rooms) > 0 {
+		level.StartRoom = level.Rooms[0]
+		// Находим самую дальнюю комнату от стартовой для выхода
+		maxDistance := 0
+		var exitRoom *entity.Room
+
+		startCenterX := level.StartRoom.X + level.StartRoom.Width/2
+		startCenterY := level.StartRoom.Y + level.StartRoom.Height/2
+
+		for _, room := range level.Rooms {
+			roomCenterX := room.X + room.Width/2
+			roomCenterY := room.Y + room.Height/2
+			distance := (roomCenterX-startCenterX)*(roomCenterX-startCenterX) +
+				(roomCenterY-startCenterY)*(roomCenterY-startCenterY)
+			if distance > maxDistance {
+				maxDistance = distance
+				exitRoom = room
+			}
+		}
+		level.ExitRoom = exitRoom
+		level.StartRoom.IsStart = true
+		level.ExitRoom.IsExit = true
+	}
+}
+
+func createRoomInGridCell(level *entity.Level, gridX, gridY, gridSize int) bool {
+	roomWidth := 6 + rand.Intn(6)
+	roomHeight := 4 + rand.Intn(4)
+
+	cellWidth := len(level.Grid) / gridSize
+	cellHeight := len(level.Grid[0]) / gridSize
+
+	minX := gridX*cellWidth + 2
+	minY := gridY*cellHeight + 2
+	maxX := (gridX+1)*cellWidth - roomWidth - 2
+	maxY := (gridY+1)*cellHeight - roomHeight - 2
+
+	if maxX <= minX || maxY <= minY {
+		return false
+	}
+
+	x := minX + rand.Intn(maxX-minX)
+	y := minY + rand.Intn(maxY-minY)
+
+	if x < 1 {
+		x = 1
+	}
+	if y < 1 {
+		y = 1
+	}
+	if x+roomWidth >= len(level.Grid)-1 {
+		roomWidth = len(level.Grid) - x - 2
+	}
+	if y+roomHeight >= len(level.Grid[0])-1 {
+		roomHeight = len(level.Grid[0]) - y - 2
+	}
+
+	// Проверяем, не пересекается ли комната с существующими
+	for _, existingRoom := range level.Rooms {
+		if x < existingRoom.X+existingRoom.Width+2 &&
+			x+roomWidth+2 > existingRoom.X &&
+			y < existingRoom.Y+existingRoom.Height+2 &&
+			y+roomHeight+2 > existingRoom.Y {
+			return false
+		}
+	}
+	// Создаем комнату
+	room := &entity.Room{
+		X:       x,
+		Y:       y,
+		Width:   roomWidth,
+		Height:  roomHeight,
+		Enemies: make([]*entity.Enemy, 0),
+		Items:   make([]*entity.Item, 0),
+	}
+
+	// Заполняем комнату полом
+	for i := x; i < x+roomWidth; i++ {
+		for j := y; j < y+roomHeight; j++ {
+			if i >= 0 && i < len(level.Grid) && j >= 0 && j < len(level.Grid[0]) {
+				level.Grid[i][j].IsWall = false
+			}
+		}
+	}
+
+	level.Rooms = append(level.Rooms, room)
+	return true
+}
+
+func connectRoomsWithCorridors(level *entity.Level) {
+	if len(level.Rooms) <= 1 {
+		return
+	}
+
+	var edges []entity.Edge
+	roomMap := make(map[string]int)
+
+	// ключ = GridX, GridY (их нужно хранить в entity.Room)
+	for i, room := range level.Rooms {
+		key := fmt.Sprintf("%d,%d", room.GridX, room.GridY)
+		roomMap[key] = i
+	}
+
+	for i, room := range level.Rooms {
+		rightKey := fmt.Sprintf("%d,%d", room.GridX+1, room.GridY)
+		if j, exists := roomMap[rightKey]; exists {
+			weight := distanceBetweenRooms(room, level.Rooms[j])
+			edges = append(edges, entity.Edge{U: i, V: j, Weight: weight})
+		}
+		downKey := fmt.Sprintf("%d,%d", room.GridX, room.GridY+1)
+		if j, exists := roomMap[downKey]; exists {
+			weight := distanceBetweenRooms(room, level.Rooms[j])
+			edges = append(edges, entity.Edge{U: i, V: j, Weight: weight})
+		}
+	}
+
+	sort.Slice(edges, func(i, j int) bool {
+		return edges[i].Weight < edges[j].Weight
+	})
+
+	parent := make([]int, len(level.Rooms))
+	for i := range parent {
+		parent[i] = i
+	}
+
+	var find func(int) int
+	find = func(x int) int {
+		if parent[x] != x {
+			parent[x] = find(parent[x])
+		}
+		return parent[x]
+	}
+	union := func(x, y int) {
+		parent[find(x)] = find(y)
+	}
+
+	// Минимальное остовное дерево (MST)
+	// var mstEdges []entity.Edge
+	for _, edge := range edges {
+		if find(edge.U) != find(edge.V) {
+			union(edge.U, edge.V)
+			// mstEdges = append(mstEdges, edge)
+			connectTwoRooms(level, level.Rooms[edge.U], level.Rooms[edge.V])
+		}
+	}
+
+	// Проверка связности
+	for {
+		comps := make(map[int][]int)
+		for i := range level.Rooms {
+			root := find(i)
+			comps[root] = append(comps[root], i)
+		}
+		if len(comps) <= 1 {
+			break
+		}
+
+		var bestEdge *entity.Edge
+		bestDist := math.MaxFloat64
+		var roots []int
+		for k := range comps {
+			roots = append(roots, k)
+		}
+
+		for _, a := range comps[roots[0]] {
+			for _, b := range comps[roots[1]] {
+				dist := distanceBetweenRooms(level.Rooms[a], level.Rooms[b])
+				if dist < bestDist {
+					bestDist = dist
+					bestEdge = &entity.Edge{U: a, V: b, Weight: dist}
+				}
+			}
+		}
+
+		if bestEdge != nil {
+			union(bestEdge.U, bestEdge.V)
+			// mstEdges = append(mstEdges, *bestEdge)
+			connectTwoRooms(level, level.Rooms[bestEdge.U], level.Rooms[bestEdge.V])
+		}
+	}
+
+	// Несколько дополнительных соединений
+	extraConnections := int(math.Sqrt(float64(len(level.Rooms))))
+	for i := 0; i < extraConnections && i < len(edges); i++ {
+		randomEdge := edges[rand.Intn(len(edges))]
+		if find(randomEdge.U) != find(randomEdge.V) {
+			union(randomEdge.U, randomEdge.V)
+			connectTwoRooms(level, level.Rooms[randomEdge.U], level.Rooms[randomEdge.V])
+		}
+	}
+}
+
+func distanceBetweenRooms(room1, room2 *entity.Room) float64 {
+	x1 := room1.X + room1.Width/2
+	y1 := room1.Y + room1.Height/2
+	x2 := room2.X + room2.Width/2
+	y2 := room2.Y + room2.Height/2
+	dx := float64(x1 - x2)
+	dy := float64(y1 - y2)
+	return math.Sqrt(dx*dx + dy*dy)
+}
+
+func connectTwoRooms(level *entity.Level, room1, room2 *entity.Room) {
+	x1 := room1.X + room1.Width/2
+	y1 := room1.Y + room1.Height/2
+	x2 := room2.X + room2.Width/2
+	y2 := room2.Y + room2.Height/2
+
+	if rand.Intn(2) == 0 {
+		createHorizontalCorridor(level, x1, y1, x2)
+		createVerticalCorridor(level, x2, y1, y2)
+	} else {
+		createVerticalCorridor(level, x1, y1, y2)
+		createHorizontalCorridor(level, x1, y2, x2)
+	}
+}
+
+func createHorizontalCorridor(level *entity.Level, x1, y1, x2 int) {
+	start, end := x1, x2
+	if start > end {
+		start, end = end, start
+	}
+	for x := start; x <= end; x++ {
+		if x >= 0 && x < len(level.Grid) && y1 >= 0 && y1 < len(level.Grid[0]) {
+			level.Grid[x][y1].IsWall = false
+			level.Grid[x][y1].IsCorridor = true
+		}
+	}
+}
+
+func createVerticalCorridor(level *entity.Level, x1, y1, y2 int) {
+	start, end := y1, y2
+	if start > end {
+		start, end = end, start
+	}
+	for y := start; y <= end; y++ {
+		if x1 >= 0 && x1 < len(level.Grid) && y >= 0 && y < len(level.Grid[0]) {
+			level.Grid[x1][y].IsWall = false
+			level.Grid[x1][y].IsCorridor = true
+		}
+	}
+}
+
+func populateLevel(level *entity.Level, levelNum int, state *entity.GameState) {
+	// Генерируем двери и ключи (Задание 6)
+	if levelNum > 1 {
+		generateDoorsAndKeys(level, levelNum, state)
+	}
+
+	// Применяем балансировку сложности (Задание 7)
+	difficulty := 3 // Средняя сложность по умолчанию
+	if state.PlayerProgress != nil {
+		difficulty = state.PlayerProgress.DifficultyLevel
+	}
+	adjustedLevelNum := levelNum + (difficulty - 3)
+
+	for _, room := range level.Rooms {
+		if room == level.StartRoom {
+			continue
+		}
+
+		// Корректируем количество врагов на основе сложности
+		baseEnemies := 1 + adjustedLevelNum/2
+		numEnemies := baseEnemies + (difficulty - 3)
+		if numEnemies > 5 {
+			numEnemies = 5
+		}
+		if numEnemies < 1 {
+			numEnemies = 1
+		}
+
+		for i := 0; i < numEnemies; i++ {
+			if rand.Intn(100) < 70 {
+				enemy := createEnemy(adjustedLevelNum, room)
+				if enemy != nil {
+					room.Enemies = append(room.Enemies, enemy)
+					state.Enemies = append(state.Enemies, enemy)
+				}
+			}
+		}
+
+		// Корректируем количество предметов на основе сложности
+		baseItems := 1 + adjustedLevelNum/3
+		numItems := baseItems - (difficulty - 3)
+		if numItems > 3 {
+			numItems = 3
+		}
+		if numItems < 0 {
+			numItems = 0
+		}
+
+		for i := 0; i < numItems; i++ {
+			if rand.Intn(100) < 60 {
+				item := CreateItem(adjustedLevelNum, room, state, level)
+				if item != nil {
+					room.Items = append(room.Items, item)
+					state.Items = append(state.Items, item)
+				}
+			}
+		}
+	}
+}
+
+func generateDoorsAndKeys(level *entity.Level, levelNum int, state *entity.GameState) {
+	colors := []entity.ItemSubType{entity.KeyRed, entity.KeyBlue, entity.KeyGreen, entity.KeyYellow}
+	maxAttempts := 10
+	attempts := 0
+
+	for attempts < maxAttempts {
+		// Очищаем предыдущие двери и ключи
+		level.Doors = make([]*entity.Door, 0)
+
+		// Удаляем предыдущие ключи из Items
+		newItems := make([]*entity.Item, 0)
+		for _, item := range state.Items {
+			if item.Type != entity.Scroll ||
+				(item.SubType != entity.KeyRed && item.SubType != entity.KeyBlue &&
+					item.SubType != entity.KeyGreen && item.SubType != entity.KeyYellow) {
+				newItems = append(newItems, item)
+			}
+		}
+		state.Items = newItems
+
+		// Создаем 1-2 двери на уровень
+		numDoors := 1 + rand.Intn(2)
+		doorsCreated := 0
+
+		for i := 0; i < numDoors && doorsCreated < numDoors; i++ {
+			if len(level.Rooms) < 2 {
+				continue
+			}
+
+			// Выбираем две случайные комнаты
+			roomIdx1 := rand.Intn(len(level.Rooms))
+			roomIdx2 := (roomIdx1 + 1 + rand.Intn(len(level.Rooms)-1)) % len(level.Rooms)
+
+			room1 := level.Rooms[roomIdx1]
+			room2 := level.Rooms[roomIdx2]
+
+			// Находим точку соединения
+			doorPos := findConnectionPoint(room1, room2, state)
+
+			// Проверяем, что позиция валидна
+			if doorPos.X < 0 || doorPos.X >= len(level.Grid) ||
+				doorPos.Y < 0 || doorPos.Y >= len(level.Grid[0]) ||
+				level.Grid[doorPos.X][doorPos.Y].IsWall {
+				continue
+			}
+
+			color := colors[rand.Intn(len(colors))]
+
+			door := &entity.Door{
+				Position: doorPos,
+				Color:    color,
+				IsLocked: true,
+			}
+
+			level.Doors = append(level.Doors, door)
+
+			// Создаем ключ в одной из комнат
+			keyRoom := room1
+			if rand.Intn(100) < 50 {
+				keyRoom = room2
+			}
+
+			key := &entity.Item{
+				Type:    entity.Scroll,
+				SubType: color,
+				Position: entity.Position{
+					X: keyRoom.X + 1 + rand.Intn(max(1, keyRoom.Width-2)),
+					Y: keyRoom.Y + 1 + rand.Intn(max(1, keyRoom.Height-2)),
+				},
+				Name: utils.GetKeyName(color),
+			}
+
+			state.Items = append(state.Items, key)
+			keyRoom.Items = append(keyRoom.Items, key)
+
+			doorsCreated++
+		}
+
+		// Проверяем доступность ключей
+		if validateKeyAccessibility(level, state) {
+			utils.AddMessage(state, "Level "+strconv.Itoa(levelNum)+
+				" generated with "+strconv.Itoa(len(level.Doors))+" doors")
+			return
+		}
+
+		attempts++
+	}
+
+	// Если не удалось создать валидную конфигурацию после maxAttempts попыток,
+	// создаем уровень без заблокированных дверей
+	utils.AddMessage(state, "Warning: Could not generate valid door configuration after "+
+		strconv.Itoa(maxAttempts)+" attempts. Creating level without locked doors.")
+
+	for i := range level.Doors {
+		level.Doors[i].IsLocked = false
+	}
+}
+
+func findConnectionPoint(room1, room2 *entity.Room, state *entity.GameState) entity.Position {
+	// Более сложный алгоритм поиска точки соединения
+	// Пытаемся найти точку на прямой между центрами комнат
+
+	center1 := entity.Position{
+		X: room1.X + room1.Width/2,
+		Y: room1.Y + room1.Height/2,
+	}
+	center2 := entity.Position{
+		X: room2.X + room2.Width/2,
+		Y: room2.Y + room2.Height/2,
+	}
+
+	// Используем алгоритм Брезенхема для поиска подходящей точки
+	dx := utils.Abs(center2.X - center1.X)
+	dy := utils.Abs(center2.Y - center1.Y)
+
+	var sx, sy int
+	if center1.X < center2.X {
+		sx = 1
+	} else {
+		sx = -1
+	}
+	if center1.Y < center2.Y {
+		sy = 1
+	} else {
+		sy = -1
+	}
+
+	err := dx - dy
+
+	x, y := center1.X, center1.Y
+	for {
+		// Проверяем, является ли точка проходимой и не стеной
+		if x >= 0 && x < len(state.Level.Grid) &&
+			y >= 0 && y < len(state.Level.Grid[0]) &&
+			!state.Level.Grid[x][y].IsWall {
+			return entity.Position{X: x, Y: y}
+		}
+
+		if x == center2.X && y == center2.Y {
+			break
+		}
+
+		e2 := 2 * err
+		if e2 > -dy {
+			err -= dy
+			x += sx
+		}
+		if e2 < dx {
+			err += dx
+			y += sy
+		}
+	}
+
+	// Если не нашли подходящую точку на прямой, возвращаем середину
+	return entity.Position{
+		X: (center1.X + center2.X) / 2,
+		Y: (center1.Y + center2.Y) / 2,
+	}
+}
+
+// validateKeyAccessibility проверяет доступность всех ключей на уровне
+func validateKeyAccessibility(level *entity.Level, state *entity.GameState) bool {
+	graph := buildAccessibilityGraph(level)
+
+	// Находим стартовую позицию игрока
+	var startNode *entity.GraphNode
+	for _, node := range graph.Nodes {
+		if node.Position.X == level.StartRoom.X+level.StartRoom.Width/2 &&
+			node.Position.Y == level.StartRoom.Y+level.StartRoom.Height/2 {
+			startNode = node
+			break
+		}
+	}
+
+	if startNode == nil {
+		return false
+	}
+
+	// Проверяем доступность каждого ключа
+	for _, door := range level.Doors {
+		if door.IsLocked {
+			// Используем BFS для проверки доступности ключа
+			keyAccessible := bfsSearch(startNode, door.Color, state)
+
+			if !keyAccessible {
+				utils.AddMessage(state, "WARNING: Key for "+utils.GetKeyName(door.Color)+
+					" door is not accessible from start!")
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// bfsSearch выполняет поиск в ширину для проверки доступности ключей
+func bfsSearch(start *entity.GraphNode, targetKey entity.ItemSubType, state *entity.GameState) bool {
+	queue := []*entity.GraphNode{start}
+	visited := make(map[entity.Position]bool)
+	visited[start.Position] = true
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		// Если нашли ключ нужного типа - возвращаем true
+		for _, item := range state.Items {
+			if item.Position.X == current.Position.X &&
+				item.Position.Y == current.Position.Y &&
+				item.Type == entity.Scroll && // Ключи используют тип Scroll
+				item.SubType == targetKey {
+				return true
+			}
+		}
+
+		// Добавляем соседей в очередь
+		for _, neighbor := range current.Neighbors {
+			if !visited[neighbor.Position] {
+				// Если это заблокированная дверь - проверяем, можем ли пройти
+				if neighbor.IsDoor && neighbor.IsLocked {
+					if neighbor.KeyType == targetKey {
+						// Это дверь того же типа, что и нужный ключ - можем пройти
+						visited[neighbor.Position] = true
+						queue = append(queue, neighbor)
+					}
+					// Заблокированные двери других типов пропускаем
+					continue
+				}
+
+				visited[neighbor.Position] = true
+				queue = append(queue, neighbor)
+			}
+		}
+	}
+
+	return false
+}
+
+// dfsSearch выполняет поиск в глубину для проверки доступности
+func dfsSearch(start *entity.GraphNode, targetKey entity.ItemSubType, visited map[entity.Position]bool, state *entity.GameState) bool {
+	if visited == nil {
+		visited = make(map[entity.Position]bool)
+	}
+
+	visited[start.Position] = true
+
+	// Проверяем, есть ли здесь нужный ключ
+	for _, item := range state.Items {
+		if item.Position.X == start.Position.X &&
+			item.Position.Y == start.Position.Y &&
+			item.Type == entity.Scroll &&
+			item.SubType == targetKey {
+			return true
+		}
+	}
+
+	// Рекурсивно проверяем соседей
+	for _, neighbor := range start.Neighbors {
+		if !visited[neighbor.Position] {
+			// Обрабатываем заблокированные двери
+			if neighbor.IsDoor && neighbor.IsLocked {
+				if neighbor.KeyType == targetKey {
+					// Можем пройти через дверь того же типа
+					if dfsSearch(neighbor, targetKey, visited, state) {
+						return true
+					}
+				}
+				continue
+			}
+
+			if dfsSearch(neighbor, targetKey, visited, state) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// buildAccessibilityGraph строит граф доступности уровня
+func buildAccessibilityGraph(level *entity.Level) *entity.AccessibilityGraph {
+	graph := &entity.AccessibilityGraph{Nodes: make([]*entity.GraphNode, 0)}
+	nodeMap := make(map[entity.Position]*entity.GraphNode)
+
+	// Создаем узлы для всех проходимых клеток
+	for x := 0; x < len(level.Grid); x++ {
+		for y := 0; y < len(level.Grid[0]); y++ {
+			if !level.Grid[x][y].IsWall {
+				pos := entity.Position{X: x, Y: y}
+				node := &entity.GraphNode{
+					Position: pos,
+					IsDoor:   false,
+					IsLocked: false,
+				}
+
+				// Проверяем, есть ли здесь дверь
+				for _, door := range level.Doors {
+					if door.Position.X == x && door.Position.Y == y {
+						node.IsDoor = true
+						node.IsLocked = door.IsLocked
+						node.KeyType = door.Color
+						break
+					}
+				}
+
+				graph.Nodes = append(graph.Nodes, node)
+				nodeMap[pos] = node
+			}
+		}
+	}
+
+	// Создаем связи между соседними узлами
+	for _, node := range graph.Nodes {
+		directions := []entity.Position{{X: 1, Y: 0}, {X: -1, Y: 0}, {X: 0, Y: 1}, {X: 0, Y: -1}}
+
+		for _, dir := range directions {
+			neighborPos := entity.Position{X: node.Position.X + dir.X, Y: node.Position.Y + dir.Y}
+			if neighbor, exists := nodeMap[neighborPos]; exists {
+				node.Neighbors = append(node.Neighbors, neighbor)
+			}
+		}
+	}
+
+	return graph
+}
+
+// В функции createEnemy исправим ошибку с enemy
+func createEnemy(levelNum int, room *entity.Room) *entity.Enemy {
+	// Сначала определим типы и веса
+	types := []entity.EnemyType{entity.Zombie, entity.Vampire, entity.Ghost, entity.Ogre, entity.SnakeMage, entity.Mimic} // Уменьшили веса других, добавили Mimic
+	weights := []int{35, 15, 15, 15, 10, 10}
+	total := 0
+	for _, w := range weights {
+		total += w
+	}
+	roll := rand.Intn(total)
+	var chosen entity.EnemyType
+	for i, w := range weights {
+		if roll < w {
+			chosen = types[i]
+			break
+		}
+		roll -= w
+	}
+	health := 4 + levelNum*2  // Меньше здоровья
+	agility := 3 + levelNum   // Меньше ловкости
+	strength := 2 + levelNum  // Меньше силы
+	hostility := 5 + levelNum // Меньший радиус агрессии
+
+	switch chosen {
+	case entity.Zombie:
+		health += 6
+		agility -= 1
+		strength += 1
+		hostility += 2
+	case entity.Vampire:
+		health += 3
+		agility += 2
+		strength += 1
+		hostility += 3
+	case entity.Ghost:
+		health += 1
+		agility += 3
+		strength -= 1
+		hostility -= 2
+	case entity.Ogre:
+		health += 10
+		agility -= 2
+		strength += 3
+		hostility += 1
+	case entity.SnakeMage:
+		health += 2
+		agility += 2
+		strength -= 1
+		hostility += 4
+	case entity.Mimic:
+		health += 8
+		agility += 3
+		strength += 1
+		hostility = 1 // Низкая враждебность
+	}
+	// Устанавливаем паттерн движения в зависимости от типа
+	var pattern entity.MovementPattern
+	switch chosen {
+	case entity.Zombie:
+		pattern = entity.Random
+	case entity.Vampire:
+		pattern = entity.Chase
+	case entity.Ghost:
+		pattern = entity.Teleport
+	case entity.Ogre:
+		pattern = entity.TwoStep
+	case entity.SnakeMage:
+		pattern = entity.Diagonal
+	default:
+		pattern = entity.Random
+	}
+
+	attempts := 0
+	var pos entity.Position
+	for attempts < 50 {
+		pos = entity.Position{X: room.X + 1 + rand.Intn(max(1, room.Width-2)), Y: room.Y + 1 + rand.Intn(max(1, room.Height-2))}
+		if pos.X >= room.X && pos.X < room.X+room.Width && pos.Y >= room.Y && pos.Y < room.Y+room.Height {
+			break
+		}
+		attempts++
+	}
+	if attempts >= 50 {
+		return nil
+	}
+	return &entity.Enemy{
+		Type: chosen, Health: health, Agility: agility, Strength: strength, Hostility: hostility,
+		Position: pos, IsVisible: true, Pattern: pattern, MoveCooldown: 0, HasBeenHit: false,
+		AttackCooldown: 0, TeleportCooldown: 0, InvisibilityCooldown: 0, IsDisguised: true, // Mimic начинается замаскированным
+	}
+}
+
+func CreateItem(levelNum int, room *entity.Room, state *entity.GameState, levelOpt ...*entity.Level) *entity.Item {
+	var level *entity.Level
+	if len(levelOpt) > 0 && levelOpt[0] != nil {
+		level = levelOpt[0]
+	} else {
+		level = state.Level
+	}
+
+	if level == nil {
+		return nil
+	}
+
+	itemTypes := []entity.ItemType{entity.Treasure, entity.Food, entity.Potion, entity.Scroll, entity.Weapon}
+	weights := []int{30, 25, 15, 15, 15}
+
+	totalWeight := 0
+	for _, w := range weights {
+		totalWeight += w
+	}
+
+	roll := rand.Intn(totalWeight)
+	var chosenType entity.ItemType
+	var chosenSubType entity.ItemSubType
+
+	for i, w := range weights {
+		if roll < w {
+			chosenType = itemTypes[i]
+			break
+		}
+		roll -= w
+	}
+
+	switch chosenType {
+	case entity.Treasure, entity.Food:
+		chosenSubType = 0
+	case entity.Potion:
+		potionTypes := []entity.ItemSubType{entity.HealthPotion, entity.AgilityPotion, entity.StrengthPotion}
+		chosenSubType = potionTypes[rand.Intn(len(potionTypes))]
+	case entity.Scroll:
+		scrollTypes := []entity.ItemSubType{entity.MaxHealthScroll, entity.AgilityScroll, entity.StrengthScroll}
+		chosenSubType = scrollTypes[rand.Intn(len(scrollTypes))]
+	case entity.Weapon:
+		weaponTypes := []entity.ItemSubType{entity.Sword, entity.Axe}
+		chosenSubType = weaponTypes[rand.Intn(len(weaponTypes))]
+	}
+
+	healthBoost := 5 + levelNum*2
+	maxHealthBoost := 3 + levelNum
+	agilityBoost := 1 + levelNum
+	strengthBoost := 2 + levelNum
+	value := 10 + levelNum*5
+
+	var pos entity.Position
+	attempts := 0
+	found := false
+
+	for attempts < 50 {
+		if room != nil {
+			pos = entity.Position{
+				X: room.X + 1 + rand.Intn(max(1, room.Width-2)),
+				Y: room.Y + 1 + rand.Intn(max(1, room.Height-2)),
+			}
+		} else {
+			pos = entity.Position{
+				X: rand.Intn(len(level.Grid)),
+				Y: rand.Intn(len(level.Grid[0])),
+			}
+		}
+
+		if pos.X >= 0 && pos.X < len(level.Grid) &&
+			pos.Y >= 0 && pos.Y < len(level.Grid[0]) &&
+			!level.Grid[pos.X][pos.Y].IsWall {
+			found = true
+			break
+		}
+		attempts++
+	}
+
+	if !found {
+		return nil
+	}
+
+	return &entity.Item{
+		Type:           chosenType,
+		SubType:        chosenSubType,
+		HealthBoost:    healthBoost,
+		MaxHealthBoost: maxHealthBoost,
+		AgilityBoost:   agilityBoost,
+		StrengthBoost:  strengthBoost,
+		Value:          value,
+		Position:       pos,
+	}
+}

@@ -3,10 +3,11 @@
 all: build
 
 build:
-	go build -o rogue-game main.go structure.go logic.go interface.go
+	@mkdir build && go build -o build/rogue cmd/rogue/main.go
 
-run: build
-	./rogue-game
+run:
+	@go run cmd/rogue/main.go
 
 clean:
-	rm -f rogue-game statistics.json *.sav go.mod go.sum *.json *.json
+	@rm -f rogue-game statistics.json *.sav go.sum *.json *.json
+	@rm -rf build/
