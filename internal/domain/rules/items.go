@@ -137,21 +137,23 @@ func usePotion(state *entity.GameState, index int) {
 }
 
 func useScroll(state *entity.GameState, index int) {
-	if index < 0 || index >= len(state.Backpack.Scrolls) {
-		state.Messages = append(state.Messages, "Invalid scroll selection")
-		return
-	}
-	scroll := state.Backpack.Scrolls[index]
+    if index < 0 || index >= len(state.Backpack.Scrolls) {
+        state.Messages = append(state.Messages, "Invalid scroll selection")
+        return
+    }
+    scroll := state.Backpack.Scrolls[index]
 
-	if scroll.SubType == entity.KeyRed || scroll.SubType == entity.KeyBlue ||
-		scroll.SubType == entity.KeyGreen || scroll.SubType == entity.KeyYellow {
-		useKey(state, scroll)
-	} else {
-		applyScrollEffect(state, scroll)
-		state.Backpack.Scrolls = append(state.Backpack.Scrolls[:index], state.Backpack.Scrolls[index+1:]...)
-		state.GameSession.ScrollsUsed++
-		state.Messages = append(state.Messages, "Used scroll")
-	}
+    if scroll.SubType == entity.KeyRed || scroll.SubType == entity.KeyBlue ||
+        scroll.SubType == entity.KeyGreen || scroll.SubType == entity.KeyYellow {
+        useKey(state, scroll)
+        // УДАЛИТЬ ключ из инвентаря после использования
+        state.Backpack.Scrolls = append(state.Backpack.Scrolls[:index], state.Backpack.Scrolls[index+1:]...)
+    } else {
+        applyScrollEffect(state, scroll)
+        state.Backpack.Scrolls = append(state.Backpack.Scrolls[:index], state.Backpack.Scrolls[index+1:]...)
+        state.GameSession.ScrollsUsed++
+        state.Messages = append(state.Messages, "Used scroll")
+    }
 }
 
 func useWeapon(state *entity.GameState, index int) {

@@ -149,9 +149,15 @@ func (gi *GameInterface) showUseItemMenu(itemType entity.ItemType) {
 			gi.showMessage("No scrolls in backpack")
 			return
 		}
-		gi.stdscr.Print("=== SCROLLS ===\n\n")
-		for i := range bp.Scrolls {
-			gi.stdscr.Printf("%d. Scroll\n", i+1)
+		gi.stdscr.Print("=== SCROLLS & KEYS ===\n\n")
+		for i, scroll := range bp.Scrolls {
+			// ОТОБРАЖАЕМ НАЗВАНИЯ КЛЮЧЕВ вместо "Scroll"
+			if scroll.SubType == entity.KeyRed || scroll.SubType == entity.KeyBlue ||
+				scroll.SubType == entity.KeyGreen || scroll.SubType == entity.KeyYellow {
+				gi.stdscr.Printf("%d. %s\n", i+1, gi.game.GetKeyName(scroll.SubType))
+			} else {
+				gi.stdscr.Printf("%d. Scroll\n", i+1)
+			}
 		}
 		gi.stdscr.Print("\nChoose 1-9 or any other key to cancel: ")
 		gi.stdscr.Refresh()

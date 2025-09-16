@@ -32,10 +32,10 @@ func MovePlayer(state *entity.GameState, dx, dy int) {
 				if item.Type == entity.Scroll && (item.SubType == entity.KeyRed || item.SubType == entity.KeyBlue ||
 					item.SubType == entity.KeyGreen || item.SubType == entity.KeyYellow) {
 					utils.AddMessage(state, "You see a key here (press 'p' to pick up)")
-					continue
+					continue // Пропускаем ключи - они не подбираются автоматически
 				}
 				if canAddToBackpack(state, item) {
-					addToBackpack(state, item)
+					addToBackpack(state, item) // ТОЛЬКО ОДИН РАЗ вызываем добавление
 					state.Items = append(state.Items[:i], state.Items[i+1:]...)
 					picked = true
 				} else {
@@ -81,33 +81,33 @@ func canMoveTo(state *entity.GameState, x, y int) bool {
 }
 
 func PickUpItem(state *entity.GameState) {
-	// Проверяем, не усыплен ли игрок
-	if state.SleepTurns > 0 {
-		state.SleepTurns--
-		utils.AddMessage(state, "You are asleep, can't pick up items")
-		return
-	}
+    // Проверяем, не усыплен ли игрок
+    if state.SleepTurns > 0 {
+        state.SleepTurns--
+        utils.AddMessage(state, "You are asleep, can't pick up items")
+        return
+    }
 
-	playerPos := state.Player.Position
-	foundItem := false
+    playerPos := state.Player.Position
+    foundItem := false
 
-	for i := len(state.Items) - 1; i >= 0; i-- {
-		item := state.Items[i]
-		if item.Position.X == playerPos.X && item.Position.Y == playerPos.Y {
-			if canAddToBackpack(state, item) {
-				addToBackpack(state, item)
-				state.Items = append(state.Items[:i], state.Items[i+1:]...)
-				foundItem = true
-				break
-			} else {
-				utils.AddMessage(state, "Backpack full for this item type!")
-			}
-		}
-	}
+    for i := len(state.Items) - 1; i >= 0; i-- {
+        item := state.Items[i]
+        if item.Position.X == playerPos.X && item.Position.Y == playerPos.Y {
+            if canAddToBackpack(state, item) {
+                addToBackpack(state, item) // ТОЛЬКО ОДИН РАЗ вызываем добавление
+                state.Items = append(state.Items[:i], state.Items[i+1:]...)
+                foundItem = true
+                break // ВЫХОДИМ после первого найденного предмета
+            } else {
+                utils.AddMessage(state, "Backpack full for this item type!")
+            }
+        }
+    }
 
-	if !foundItem {
-		utils.AddMessage(state, "No items to pick up here")
-	}
+    if !foundItem {
+        utils.AddMessage(state, "No items to pick up here")
+    }
 }
 
 func CheckForEnemies(state *entity.GameState) {
@@ -161,50 +161,48 @@ func canAddToBackpack(state *entity.GameState, item *entity.Item) bool {
 }
 
 func addToBackpack(state *entity.GameState, item *entity.Item) {
-	if item == nil || state.Backpack == nil {
-		return
-	}
-	switch item.Type {
-	case entity.Weapon:
-		// Если у игрока нет оружия - автоматически экипируем
-		state.Backpack.Weapons = append(state.Backpack.Weapons, item)
-		// Если у игрока нет оружия - автоматически экипируем
-		if state.Player.CurrentWeapon == nil {
-			state.Player.CurrentWeapon = item
-			utils.AddMessage(state, "Equipped weapon: +"+strconv.Itoa(item.StrengthBoost)+" STR")
-		} else {
-			// Если уже есть оружие - кладем новое в рюкзак
-			state.Backpack.Weapons = append(state.Backpack.Weapons, item)
-			utils.AddMessage(state, "Picked up weapon: +"+strconv.Itoa(item.StrengthBoost)+" STR (added to backpack)")
-		}
-	case entity.Food:
-
-		state.Backpack.Food = append(state.Backpack.Food, item)
-		utils.AddMessage(state, "Picked up food: +"+strconv.Itoa(item.HealthBoost)+" HP")
-
-	case entity.Potion:
-		state.Backpack.Potions = append(state.Backpack.Potions, item)
-		utils.AddMessage(state, "Picked up potion")
-	case entity.Scroll:
-		state.Backpack.Scrolls = append(state.Backpack.Scrolls, item)
-
-		// ОСОБАЯ ОБРАБОТКА ДЛЯ КЛЮЧЕЙ
-		if item.SubType == entity.KeyRed || item.SubType == entity.KeyBlue ||
-			item.SubType == entity.KeyGreen || item.SubType == entity.KeyYellow {
-			// Ключи не должны автоматически использоваться!
-			state.Backpack.Scrolls = append(state.Backpack.Scrolls, item)
-			utils.AddMessage(state, "Picked up "+utils.GetKeyName(item.SubType))
-		} else {
-			state.Backpack.Scrolls = append(state.Backpack.Scrolls, item)
-			utils.AddMessage(state, "Picked up scroll")
-		}
-	case entity.Treasure:
-		state.Backpack.Treasure += item.Value
-		if state.Player != nil {
-			state.Player.Treasures += item.Value
-		}
-		utils.AddMessage(state, "Picked up treasure: +"+strconv.Itoa(item.Value)+" gold")
-	}
+    if item == nil || state.Backpack == nil {
+        return
+    }
+    
+    switch item.Type {
+    case entity.Weapon:
+        // Если у игрока нет оружия - автоматически экипируем
+        if state.Player.CurrentWeapon == nil {
+            state.Player.CurrentWeapon = item
+            utils.AddMessage(state, "Equipped weapon: +"+strconv.Itoa(item.StrengthBoost)+" STR")
+        } else {
+            // Если уже есть оружие - кладем новое в рюкзак
+            state.Backpack.Weapons = append(state.Backpack.Weapons, item)
+            utils.AddMessage(state, "Picked up weapon: +"+strconv.Itoa(item.StrengthBoost)+" STR (added to backpack)")
+        }
+        
+    case entity.Food:
+        state.Backpack.Food = append(state.Backpack.Food, item)
+        utils.AddMessage(state, "Picked up food: +"+strconv.Itoa(item.HealthBoost)+" HP")
+        
+    case entity.Potion:
+        state.Backpack.Potions = append(state.Backpack.Potions, item)
+        utils.AddMessage(state, "Picked up potion")
+        
+    case entity.Scroll:
+        // ОСОБАЯ ОБРАБОТКА ДЛЯ КЛЮЧЕЙ
+        if item.SubType == entity.KeyRed || item.SubType == entity.KeyBlue ||
+            item.SubType == entity.KeyGreen || item.SubType == entity.KeyYellow {
+            state.Backpack.Scrolls = append(state.Backpack.Scrolls, item)
+            utils.AddMessage(state, "Picked up "+utils.GetKeyName(item.SubType))
+        } else {
+            state.Backpack.Scrolls = append(state.Backpack.Scrolls, item)
+            utils.AddMessage(state, "Picked up scroll")
+        }
+        
+    case entity.Treasure:
+        state.Backpack.Treasure += item.Value
+        if state.Player != nil {
+            state.Player.Treasures += item.Value
+        }
+        utils.AddMessage(state, "Picked up treasure: +"+strconv.Itoa(item.Value)+" gold")
+    }
 }
 
 func checkForAutomaticExit(state *entity.GameState, nextLevel func()) {
