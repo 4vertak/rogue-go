@@ -176,3 +176,11 @@ func (g *Game) LoadStats(filename string) error {
 func (g *Game) GetKeyName(color entity.ItemSubType) string {
 	return utils.GetKeyName(color)
 }
+
+func (g *Game) GetDoorSymbol(door *entity.Door) string {
+    return rules.GetDoorSymbol(door)
+}
+
+func (g *Game) GetDoorColor(door *entity.Door) int16 {
+    return rules.GetDoorColor(door)
+}

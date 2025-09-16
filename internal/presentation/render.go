@@ -187,6 +187,17 @@ func (gi *GameInterface) renderMap() {
 					}
 				}
 
+				// Проверка дверей
+				for _, door := range state.Level.Doors {
+					if door.Position.X == x && door.Position.Y == y {
+						if state.Level.Visible[x][y] {
+							ch = gi.game.GetDoorSymbol(door) // Используем символ двери
+							color = gi.game.GetDoorColor(door) // Используем цвет двери
+						}
+						break
+					}
+				}
+
 				if color > 0 {
 					gi.gameWindow.ColorOn(color)
 				}

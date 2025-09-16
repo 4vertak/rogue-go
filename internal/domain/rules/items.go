@@ -287,3 +287,53 @@ func dropItemNearPlayer(state *entity.GameState, item *entity.Item) bool {
 	}
 	return false
 }
+
+/*
+// Функция для получения символа двери
+func GetDoorSymbol(door *entity.Door) string {
+    switch door.Color {
+    case entity.KeyRed:
+        return "R" // Красная дверь
+    case entity.KeyBlue:
+        return "B" // Синяя дверь
+    case entity.KeyGreen:
+        return "G" // Зеленая дверь
+    case entity.KeyYellow:
+        return "Y" // Желтая дверь
+    default:
+        return "D" // Дверь по умолчанию
+    }
+}
+*/
+
+// Функция для получения символа двери (цифровая версия)
+func GetDoorSymbol(door *entity.Door) string {
+    switch door.Color {
+    case entity.KeyRed:
+        return "1" // Красная дверь
+    case entity.KeyBlue:
+        return "2" // Синяя дверь
+    case entity.KeyGreen:
+        return "3" // Зеленая дверь
+    case entity.KeyYellow:
+        return "4" // Желтая дверь
+    default:
+        return "0" // Дверь по умолчанию
+    }
+}
+
+// Функция для получения цвета двери
+func GetDoorColor(door *entity.Door) int16 {
+    switch door.Color {
+    case entity.KeyRed:
+        return 1 // Красный
+    case entity.KeyBlue:
+        return 4 // Синий
+    case entity.KeyGreen:
+        return 2 // Зеленый
+    case entity.KeyYellow:
+        return 3 // Желтый
+    default:
+        return 7 // Белый
+    }
+}
