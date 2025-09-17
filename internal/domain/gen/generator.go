@@ -27,6 +27,9 @@ func GenerateLevel(levelNum int, state *entity.GameState) *entity.Level {
 		// Doors:      make([]*entity.Door, 0),
 	}
 
+	// Очищаем коридоры от предыдущей генерации
+    level.Corridors = make([]*entity.Corridor, 0)
+
 	for i := range level.Grid {
 		level.Grid[i] = make([]entity.Cell, mapHeight)
 		level.Discovered[i] = make([]entity.Cell, mapHeight)
@@ -123,13 +126,13 @@ func createRoomInGridCell(level *entity.Level, gridX, gridY, gridSize int) bool 
 
 	// Проверяем, не пересекается ли комната с существующими
 	for _, existingRoom := range level.Rooms {
-		if x < existingRoom.X+existingRoom.Width+2 &&
-			x+roomWidth+2 > existingRoom.X &&
-			y < existingRoom.Y+existingRoom.Height+2 &&
-			y+roomHeight+2 > existingRoom.Y {
+		// Проверяем расстояние между комнатами (минимум 2 клетки)
+		if utils.Abs(x-existingRoom.X) < existingRoom.Width+2 &&
+		   utils.Abs(y-existingRoom.Y) < existingRoom.Height+2 {
 			return false
 		}
 	}
+	
 	// Создаем комнату
 	room := &entity.Room{
 		X:       x,
@@ -200,15 +203,19 @@ func connectRoomsWithCorridors(level *entity.Level) {
 		parent[find(x)] = find(y)
 	}
 
-	// Минимальное остовное дерево (MST)
-	// var mstEdges []entity.Edge
-	for _, edge := range edges {
-		if find(edge.U) != find(edge.V) {
-			union(edge.U, edge.V)
-			// mstEdges = append(mstEdges, edge)
-			connectTwoRooms(level, level.Rooms[edge.U], level.Rooms[edge.V])
-		}
-	}
+    // В цикле MST добавляем проверку
+    for _, edge := range edges {
+        if find(edge.U) != find(edge.V) {
+            // Проверяем, что комнаты еще не соединены
+            room1 := level.Rooms[edge.U]  // Это *entity.Room
+            room2 := level.Rooms[edge.V]  // Это *entity.Room
+            
+            if !hasCorridorBetween(level, room1, room2) {
+                union(edge.U, edge.V)
+                connectTwoRooms(level, room1, room2)  // Теперь передаем *entity.Room
+            }
+        }
+    }
 
 	// Проверка связности
 	for {
@@ -257,28 +264,61 @@ func connectRoomsWithCorridors(level *entity.Level) {
 }
 
 func distanceBetweenRooms(room1, room2 *entity.Room) float64 {
-	x1 := room1.X + room1.Width/2
-	y1 := room1.Y + room1.Height/2
-	x2 := room2.X + room2.Width/2
-	y2 := room2.Y + room2.Height/2
-	dx := float64(x1 - x2)
-	dy := float64(y1 - y2)
-	return math.Sqrt(dx*dx + dy*dy)
+    x1 := room1.X + room1.Width/2
+    y1 := room1.Y + room1.Height/2
+    x2 := room2.X + room2.Width/2
+    y2 := room2.Y + room2.Height/2
+    dx := float64(x1 - x2)
+    dy := float64(y1 - y2)
+    return math.Sqrt(dx*dx + dy*dy)
 }
 
 func connectTwoRooms(level *entity.Level, room1, room2 *entity.Room) {
-	x1 := room1.X + room1.Width/2
-	y1 := room1.Y + room1.Height/2
-	x2 := room2.X + room2.Width/2
-	y2 := room2.Y + room2.Height/2
+    x1 := room1.X + room1.Width/2
+    y1 := room1.Y + room1.Height/2
+    x2 := room2.X + room2.Width/2
+    y2 := room2.Y + room2.Height/2
 
-	if rand.Intn(2) == 0 {
-		createHorizontalCorridor(level, x1, y1, x2)
-		createVerticalCorridor(level, x2, y1, y2)
-	} else {
-		createVerticalCorridor(level, x1, y1, y2)
-		createHorizontalCorridor(level, x1, y2, x2)
-	}
+    // Проверяем, есть ли уже коридор между этими комнатами
+    if hasCorridorBetween(level, room1, room2) {
+        return
+    }
+
+    // Выбираем только один тип соединения вместо двух
+    if rand.Intn(2) == 0 {
+        createHorizontalCorridor(level, x1, y1, x2)
+        createVerticalCorridor(level, x2, y1, y2)
+    } else {
+        createVerticalCorridor(level, x1, y1, y2)
+        createHorizontalCorridor(level, x1, y2, x2)
+    }
+
+    // Добавляем коридор в список
+    corridor := &entity.Corridor{
+        Start: entity.Position{X: x1, Y: y1},
+        End:   entity.Position{X: x2, Y: y2},
+    }
+    level.Corridors = append(level.Corridors, corridor)
+}
+
+// Добавить функцию проверки существующего коридора
+func hasCorridorBetween(level *entity.Level, room1, room2 *entity.Room) bool {
+    for _, corridor := range level.Corridors {
+        room1Center := entity.Position{
+            X: room1.X + room1.Width/2,
+            Y: room1.Y + room1.Height/2,
+        }
+        room2Center := entity.Position{
+            X: room2.X + room2.Width/2,
+            Y: room2.Y + room2.Height/2,
+        }
+        
+        if (corridor.Start == room1Center && corridor.End == room2Center) ||
+           (corridor.Start == room2Center && corridor.End == room1Center) {
+            return true
+        }
+    }
+    return false
 }
 
 func createHorizontalCorridor(level *entity.Level, x1, y1, x2 int) {
@@ -286,9 +326,10 @@ func createHorizontalCorridor(level *entity.Level, x1, y1, x2 int) {
     if start > end {
         start, end = end, start
     }
+    
+    // Создаем коридор шириной 1 клетка
     for x := start; x <= end; x++ {
         if x >= 0 && x < len(level.Grid) && y1 >= 0 && y1 < len(level.Grid[0]) {
-            // ПРОВЕРЯЕМ, что это не комната
             if !isInRoom(level, x, y1) {
                 level.Grid[x][y1].IsWall = false
                 level.Grid[x][y1].IsCorridor = true
@@ -302,9 +343,10 @@ func createVerticalCorridor(level *entity.Level, x1, y1, y2 int) {
     if start > end {
         start, end = end, start
     }
+    
+    // Создаем коридор шириной 1 клетка
     for y := start; y <= end; y++ {
         if x1 >= 0 && x1 < len(level.Grid) && y >= 0 && y < len(level.Grid[0]) {
-            // ПРОВЕРЯЕМ, что это не комната
             if !isInRoom(level, x1, y) {
                 level.Grid[x1][y].IsWall = false
                 level.Grid[x1][y].IsCorridor = true
@@ -399,7 +441,7 @@ func generateDoorsAndKeys(level *entity.Level, levelNum int, state *entity.GameS
     }
 
     attempts := 0
-    maxAttempts := 10 // Ограничим попытки генерации
+    maxAttempts := 20 // Увеличим количество попыток
 
     for i := 0; i < numDoors && attempts < maxAttempts; i++ {
         attempts++
@@ -432,26 +474,28 @@ func generateDoorsAndKeys(level *entity.Level, levelNum int, state *entity.GameS
             IsLocked: true,
         }
 
-        // ВАЖНОЕ ИЗМЕНЕНИЕ: Ключ должен быть в той же комнате, что и игрок
-        // или в доступной области, а не случайно в одной из двух комнат
-        
-        // Определяем, в какой комнате находится игрок (стартовая комната)
-        startRoom := level.StartRoom
-        
-        // Выбираем комнату для ключа - всегда в стартовой комнате или доступной области
+        // ВАЖНО: Ключ должен быть в комнате, доступной ДО открытия этой двери
+        // Определяем, какая комната доступна из стартовой без прохождения через эту дверь
         var keyRoom *entity.Room
-        if room1 == startRoom || isRoomConnectedToStart(room1, level, startRoom) {
+        
+        // Проверяем, какая комната доступна из стартовой
+        if isRoomAccessibleFromStart(room1, level, doorPos) {
             keyRoom = room1
-        } else if room2 == startRoom || isRoomConnectedToStart(room2, level, startRoom) {
+        } else if isRoomAccessibleFromStart(room2, level, doorPos) {
             keyRoom = room2
         } else {
-            // Если ни одна из комнат не подключена к стартовой, пропускаем эту дверь
+            // Если ни одна комната не доступна, пропускаем
             continue
         }
 
         keyPos := findValidKeyPosition(keyRoom, level, doorPos)
         if keyPos.X == -1 && keyPos.Y == -1 {
             continue // Не нашли подходящую позицию для ключа
+        }
+
+        // Финальная проверка: ключ должен быть доступен из стартовой позиции
+        if !isPositionAccessibleFromStart(keyPos, level, doorPos) {
+            continue
         }
 
         key := &entity.Item{
@@ -461,12 +505,7 @@ func generateDoorsAndKeys(level *entity.Level, levelNum int, state *entity.GameS
             Name:     utils.GetKeyName(color),
         }
 
-        // ДОБАВЛЯЕМ ПРОВЕРКУ ДОСТУПНОСТИ
-        if !validateKeyAccessibility(level, state, key, door) {
-            continue // Пропускаем эту дверь/ключ, если ключ недоступен
-        }
-
-        // Если проверка пройдена, добавляем дверь и ключ
+        // Добавляем дверь и ключ
         level.Doors = append(level.Doors, door)
         state.Items = append(state.Items, key)
         if keyRoom.Items == nil {
@@ -476,6 +515,22 @@ func generateDoorsAndKeys(level *entity.Level, levelNum int, state *entity.GameS
 
         utils.AddMessage(state, "Generated "+utils.GetKeyName(color)+" door")
     }
+}
+
+// isRoomAccessibleFromStart проверяет, доступна ли комната из стартовой без прохождения через указанную дверь
+func isRoomAccessibleFromStart(room *entity.Room, level *entity.Level, excludedDoor entity.Position) bool {
+    roomCenter := entity.Position{
+        X: room.X + room.Width/2,
+        Y: room.Y + room.Height/2,
+    }
+    
+    startPos := entity.Position{
+        X: level.StartRoom.X + level.StartRoom.Width/2,
+        Y: level.StartRoom.Y + level.StartRoom.Height/2,
+    }
+    
+    visited := make(map[entity.Position]bool)
+    return dfsAccessible(startPos, roomCenter, level, excludedDoor, visited)
 }
 
 // isRoomConnectedToStart проверяет, подключена ли комната к стартовой комнате
@@ -625,7 +680,7 @@ func findKeyPosition(room *entity.Room, level *entity.Level) entity.Position {
 }
 
 func findValidKeyPosition(room *entity.Room, level *entity.Level, doorPos entity.Position) entity.Position {
-    maxAttempts := 50
+    maxAttempts := 100
     attempts := 0
     
     for attempts < maxAttempts {
@@ -640,7 +695,7 @@ func findValidKeyPosition(room *entity.Room, level *entity.Level, doorPos entity
            pos.Y >= room.Y && pos.Y < room.Y+room.Height &&
            !isNearDoor(pos, doorPos) && // Не рядом с дверью
            !level.Grid[pos.X][pos.Y].IsWall &&
-           isPositionAccessible(pos, level) { // ДОБАВЛЯЕМ ПРОВЕРКУ ДОСТУПНОСТИ
+           isPositionAccessibleFromStart(pos, level, doorPos) { // Ключ должен быть доступен ДО открытия двери
             return pos
         }
         attempts++
@@ -650,13 +705,75 @@ func findValidKeyPosition(room *entity.Room, level *entity.Level, doorPos entity
     for x := room.X + 1; x < room.X+room.Width-1; x++ {
         for y := room.Y + 1; y < room.Y+room.Height-1; y++ {
             pos := entity.Position{X: x, Y: y}
-            if !level.Grid[x][y].IsWall && isPositionAccessible(pos, level) {
+            if !level.Grid[x][y].IsWall && isPositionAccessibleFromStart(pos, level, doorPos) {
                 return pos
             }
         }
     }
     
     return entity.Position{X: -1, Y: -1}
+}
+
+// isPositionAccessibleFromStart проверяет, доступна ли позиция из стартовой комнаты ДО открытия конкретной двери
+func isPositionAccessibleFromStart(pos entity.Position, level *entity.Level, excludedDoor entity.Position) bool {
+    startPos := entity.Position{
+        X: level.StartRoom.X + level.StartRoom.Width/2,
+        Y: level.StartRoom.Y + level.StartRoom.Height/2,
+    }
+    
+    visited := make(map[entity.Position]bool)
+    return dfsAccessible(startPos, pos, level, excludedDoor, visited)
+}
+
+func dfsAccessible(current, target entity.Position, level *entity.Level, excludedDoor entity.Position, visited map[entity.Position]bool) bool {
+    if current.X == target.X && current.Y == target.Y {
+        return true
+    }
+    
+    if visited[current] {
+        return false
+    }
+    visited[current] = true
+    
+    // Проверяем соседние клетки
+    directions := []entity.Position{{X: 1, Y: 0}, {X: -1, Y: 0}, {X: 0, Y: 1}, {X: 0, Y: -1}}
+    
+    for _, dir := range directions {
+        next := entity.Position{X: current.X + dir.X, Y: current.Y + dir.Y}
+        
+        // Проверяем границы
+        if next.X < 0 || next.X >= len(level.Grid) || next.Y < 0 || next.Y >= len(level.Grid[0]) {
+            continue
+        }
+        
+        // Проверяем стену
+        if level.Grid[next.X][next.Y].IsWall {
+            continue
+        }
+        
+        // Пропускаем исключенную дверь (та, для которой ищем ключ)
+        if next.X == excludedDoor.X && next.Y == excludedDoor.Y {
+            continue
+        }
+        
+        // Проверяем другие заблокированные двери
+        doorBlocked := false
+        for _, door := range level.Doors {
+            if door.Position.X == next.X && door.Position.Y == next.Y && door.IsLocked {
+                doorBlocked = true
+                break
+            }
+        }
+        if doorBlocked {
+            continue
+        }
+        
+        if dfsAccessible(next, target, level, excludedDoor, visited) {
+            return true
+        }
+    }
+    
+    return false
 }
 
 // isPositionAccessible проверяет, доступна ли позиция из стартовой комнаты
