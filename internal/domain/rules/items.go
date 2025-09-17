@@ -41,22 +41,22 @@ func GetItemName(item *entity.Item) string {
 	case entity.Potion:
 		switch item.SubType {
 		case entity.HealthPotion:
-			return "Health Potion"
+			return "Health Potion (HP+" + strconv.Itoa(item.HealthBoost) + ")"
 		case entity.AgilityPotion:
-			return "Agility Potion"
+			return "Agility Potion (AGI+" + strconv.Itoa(item.AgilityBoost) + ")"
 		case entity.StrengthPotion:
-			return "Strength Potion"
+			return "Strength Potion (STR+" + strconv.Itoa(item.StrengthBoost) + ")"
 		default:
 			return "Potion"
 		}
 	case entity.Scroll:
 		switch item.SubType {
 		case entity.MaxHealthScroll:
-			return "Max Health Scroll"
+			return "Max Health Scroll (MaxHP+" + strconv.Itoa(item.MaxHealthBoost) + ")"
 		case entity.AgilityScroll:
-			return "Agility Scroll"
+			return "Agility Scroll (AGI+" + strconv.Itoa(item.AgilityBoost) + ")"
 		case entity.StrengthScroll:
-			return "Strength Scroll"
+			return "Strength Scroll (STR+" + strconv.Itoa(item.StrengthBoost) + ")"
 		case entity.KeyRed:
 			return "Red Key"
 		case entity.KeyBlue:
@@ -66,7 +66,7 @@ func GetItemName(item *entity.Item) string {
 		case entity.KeyYellow:
 			return "Yellow Key"
 		default:
-			return "Scroll"
+			return "Mystery Scroll"
 		}
 	case entity.Treasure:
 		return "Treasure (" + strconv.Itoa(item.Value) + " gold)"
@@ -133,7 +133,16 @@ func usePotion(state *entity.GameState, index int) {
 	applyPotionEffect(state, potion)
 	state.Backpack.Potions = append(state.Backpack.Potions[:index], state.Backpack.Potions[index+1:]...)
 	state.GameSession.PotionsUsed++
-	state.Messages = append(state.Messages, "Used potion")
+	
+	// Добавляем сообщение о использовании
+	switch potion.SubType {
+	case entity.HealthPotion:
+		state.Messages = append(state.Messages, "Used Health Potion: +"+strconv.Itoa(potion.HealthBoost)+" HP")
+	case entity.AgilityPotion:
+		state.Messages = append(state.Messages, "Used Agility Potion: +"+strconv.Itoa(potion.AgilityBoost)+" AGI")
+	case entity.StrengthPotion:
+		state.Messages = append(state.Messages, "Used Strength Potion: +"+strconv.Itoa(potion.StrengthBoost)+" STR")
+	}
 }
 
 func useScroll(state *entity.GameState, index int) {
@@ -146,13 +155,24 @@ func useScroll(state *entity.GameState, index int) {
     if scroll.SubType == entity.KeyRed || scroll.SubType == entity.KeyBlue ||
         scroll.SubType == entity.KeyGreen || scroll.SubType == entity.KeyYellow {
         useKey(state, scroll)
-        // УДАЛИТЬ ключ из инвентаря после использования
         state.Backpack.Scrolls = append(state.Backpack.Scrolls[:index], state.Backpack.Scrolls[index+1:]...)
+        state.Messages = append(state.Messages, "Used "+keyName(scroll.SubType))
     } else {
         applyScrollEffect(state, scroll)
         state.Backpack.Scrolls = append(state.Backpack.Scrolls[:index], state.Backpack.Scrolls[index+1:]...)
         state.GameSession.ScrollsUsed++
-        state.Messages = append(state.Messages, "Used scroll")
+        
+        // Добавляем сообщение о использовании с правильным названием
+        switch scroll.SubType {
+        case entity.MaxHealthScroll:
+            state.Messages = append(state.Messages, "Used Max Health Scroll: +"+strconv.Itoa(scroll.MaxHealthBoost)+" Max HP")
+        case entity.AgilityScroll:
+            state.Messages = append(state.Messages, "Used Agility Scroll: +"+strconv.Itoa(scroll.AgilityBoost)+" AGI")
+        case entity.StrengthScroll:
+            state.Messages = append(state.Messages, "Used Strength Scroll: +"+strconv.Itoa(scroll.StrengthBoost)+" STR")
+        default:
+            state.Messages = append(state.Messages, "Used scroll")
+        }
     }
 }
 
@@ -196,10 +216,36 @@ func applyPotionEffect(state *entity.GameState, potion *entity.Item) {
 		if state.Player.Health > state.Player.MaxHealth {
 			state.Player.Health = state.Player.MaxHealth
 		}
+		// Создаем временный эффект
+		effect := &entity.Effect{
+			Type:        entity.HealthEffect,
+			Duration:    0, // Мгновенный эффект
+			Value:       potion.HealthBoost,
+			Description: "Health restored",
+		}
+		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
+		
 	case entity.AgilityPotion:
 		state.Player.Agility += potion.AgilityBoost
+		// Создаем временный эффект
+		effect := &entity.Effect{
+			Type:        entity.AgilityEffect,
+			Duration:    10, // Длительность в ходах
+			Value:       potion.AgilityBoost,
+			Description: "Agility boosted",
+		}
+		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
+		
 	case entity.StrengthPotion:
 		state.Player.Strength += potion.StrengthBoost
+		// Создаем временный эффект
+		effect := &entity.Effect{
+			Type:        entity.StrengthEffect,
+			Duration:    10, // Длительность в ходах
+			Value:       potion.StrengthBoost,
+			Description: "Strength boosted",
+		}
+		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
 	}
 }
 
@@ -208,10 +254,36 @@ func applyScrollEffect(state *entity.GameState, scroll *entity.Item) {
 	case entity.MaxHealthScroll:
 		state.Player.MaxHealth += scroll.MaxHealthBoost
 		state.Player.Health = state.Player.MaxHealth
+		// Создаем временный эффект
+		effect := &entity.Effect{
+			Type:        entity.MaxHealthEffect,
+			Duration:    0, // Постоянный эффект
+			Value:       scroll.MaxHealthBoost,
+			Description: "Max health increased",
+		}
+		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
+		
 	case entity.AgilityScroll:
 		state.Player.Agility += scroll.AgilityBoost
+		// Создаем временный эффект
+		effect := &entity.Effect{
+			Type:        entity.AgilityEffect,
+			Duration:    0, // Постоянный эффект
+			Value:       scroll.AgilityBoost,
+			Description: "Agility permanently increased",
+		}
+		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
+		
 	case entity.StrengthScroll:
 		state.Player.Strength += scroll.StrengthBoost
+		// Создаем временный эффект
+		effect := &entity.Effect{
+			Type:        entity.StrengthEffect,
+			Duration:    0, // Постоянный эффект
+			Value:       scroll.StrengthBoost,
+			Description: "Strength permanently increased",
+		}
+		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
 	}
 }
 

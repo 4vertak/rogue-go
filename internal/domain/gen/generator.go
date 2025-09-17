@@ -1008,6 +1008,13 @@ func CreateItem(levelNum int, room *entity.Room, state *entity.GameState, levelO
 	var chosenType entity.ItemType
 	var chosenSubType entity.ItemSubType
 
+	// Инициализируем значения по умолчанию
+	healthBoost := 5 + levelNum*2
+	maxHealthBoost := 3 + levelNum
+	agilityBoost := 1 + levelNum
+	strengthBoost := 2 + levelNum
+	value := 10 + levelNum*5
+
 	for i, w := range weights {
 		if roll < w {
 			chosenType = itemTypes[i]
@@ -1017,24 +1024,75 @@ func CreateItem(levelNum int, room *entity.Room, state *entity.GameState, levelO
 	}
 
 	switch chosenType {
-	case entity.Treasure, entity.Food:
+	case entity.Treasure:
 		chosenSubType = 0
+		// Для сокровищ используем значения по умолчанию
+		
+	case entity.Food:
+		chosenSubType = 0
+		// Для еды используем значения по умолчанию
+		
 	case entity.Potion:
 		potionTypes := []entity.ItemSubType{entity.HealthPotion, entity.AgilityPotion, entity.StrengthPotion}
 		chosenSubType = potionTypes[rand.Intn(len(potionTypes))]
+		
+		// Переопределяем бусты для зелий
+		switch chosenSubType {
+		case entity.HealthPotion:
+			healthBoost = 10 + levelNum*3  // Больше здоровья для зелий
+			// Обнуляем ненужные бусты
+			agilityBoost = 0
+			strengthBoost = 0
+			maxHealthBoost = 0
+		case entity.AgilityPotion:
+			agilityBoost = 2 + levelNum    // Буст ловкости
+			// Обнуляем ненужные бусты
+			healthBoost = 0
+			strengthBoost = 0
+			maxHealthBoost = 0
+		case entity.StrengthPotion:
+			strengthBoost = 2 + levelNum   // Буст силы
+			// Обнуляем ненужные бусты
+			healthBoost = 0
+			agilityBoost = 0
+			maxHealthBoost = 0
+		}
+		
 	case entity.Scroll:
 		scrollTypes := []entity.ItemSubType{entity.MaxHealthScroll, entity.AgilityScroll, entity.StrengthScroll}
 		chosenSubType = scrollTypes[rand.Intn(len(scrollTypes))]
+		
+		// Переопределяем бусты для свитков
+		switch chosenSubType {
+		case entity.MaxHealthScroll:
+			maxHealthBoost = 5 + levelNum   // Увеличение максимального здоровья
+			// Обнуляем ненужные бусты
+			healthBoost = 0
+			agilityBoost = 0
+			strengthBoost = 0
+		case entity.AgilityScroll:
+			agilityBoost = 1 + levelNum     // Постоянное увеличение ловкости
+			// Обнуляем ненужные бусты
+			healthBoost = 0
+			strengthBoost = 0
+			maxHealthBoost = 0
+		case entity.StrengthScroll:
+			strengthBoost = 1 + levelNum    // Постоянное увеличение силы
+			// Обнуляем ненужные бусты
+			healthBoost = 0
+			agilityBoost = 0
+			maxHealthBoost = 0
+		}
+		
 	case entity.Weapon:
 		weaponTypes := []entity.ItemSubType{entity.Sword, entity.Axe}
 		chosenSubType = weaponTypes[rand.Intn(len(weaponTypes))]
+		strengthBoost = 3 + levelNum*2     // Сила оружия увеличивается с уровнем
+		// Обнуляем ненужные бусты
+		healthBoost = 0
+		agilityBoost = 0
+		maxHealthBoost = 0
 	}
-
-	healthBoost := 5 + levelNum*2
-	maxHealthBoost := 3 + levelNum
-	agilityBoost := 1 + levelNum
-	strengthBoost := 2 + levelNum
-	value := 10 + levelNum*5
 
 	var pos entity.Position
 	attempts := 0

@@ -688,12 +688,32 @@ func (gi *GameInterface) renderEffects() {
 			if startRow >= maxY-2 {
 				break
 			}
-			effectText := string(effect.Type) + " (" + strconv.Itoa(effect.Duration) + ")"
+			
+			// Преобразуем тип эффекта в читаемое название
+			effectName := getEffectName(effect.Type)
+			effectText := effectName + " (" + strconv.Itoa(effect.Duration) + ")"
 			gi.statusWindow.MovePrint(startRow, 1, effectText)
 			startRow++
 		}
 	}
 }
+
+// Добавьте вспомогательную функцию для преобразования типа эффекта в название
+func getEffectName(effectType entity.EffectType) string {
+	switch effectType {
+	case entity.HealthEffect:
+		return "Health"
+	case entity.AgilityEffect:
+		return "Agility"
+	case entity.StrengthEffect:
+		return "Strength"
+	case entity.MaxHealthEffect:
+		return "Max Health"
+	default:
+		return "Unknown"
+	}
+}
+
 func (gi *GameInterface) renderMessageBar() {
 	state := gi.game.State
 	gi.messageWindow.Erase()

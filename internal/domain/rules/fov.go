@@ -85,15 +85,31 @@ func hasLineOfSight(state *entity.GameState, start, end entity.Position) bool {
 }
 
 func UpdateEffects(state *entity.GameState) {
-	// Уменьшаем длительность эффектов
 	if state.Player == nil {
 		return
 	}
+	
 	for i := len(state.Player.ActiveEffects) - 1; i >= 0; i-- {
 		e := state.Player.ActiveEffects[i]
-		e.Duration--
-		if e.Duration <= 0 {
-			state.Player.ActiveEffects = append(state.Player.ActiveEffects[:i], state.Player.ActiveEffects[i+1:]...)
+		
+		// Уменьшаем длительность только для временных эффектов
+		if e.Duration > 0 {
+			e.Duration--
+			
+			// Удаляем эффект, когда длительность заканчивается
+			if e.Duration <= 0 {
+				// Отменяем эффект (только для временных бустов)
+				switch e.Type {
+				case entity.AgilityEffect:
+					state.Player.Agility -= e.Value
+					state.Messages = append(state.Messages, "Agility boost wore off")
+				case entity.StrengthEffect:
+					state.Player.Strength -= e.Value
+					state.Messages = append(state.Messages, "Strength boost wore off")
+				}
+				
+				state.Player.ActiveEffects = append(state.Player.ActiveEffects[:i], state.Player.ActiveEffects[i+1:]...)
+			}
 		}
 	}
 }
