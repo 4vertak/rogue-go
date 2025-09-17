@@ -46,15 +46,15 @@ func isItemMessage(message string) bool {
 func GetKeyName(color entity.ItemSubType) string {
 	switch color {
 	case entity.KeyRed:
-		return "Red Key"
+		return "Red Key(1)"
 	case entity.KeyBlue:
-		return "Blue Key"
+		return "Blue Key(2)"
 	case entity.KeyGreen:
-		return "Green Key"
+		return "Green Key(3)"
 	case entity.KeyYellow:
-		return "Yellow Key"
+		return "Yellow Key(4)"
 	default:
-		return "Key"
+		return "Key(0)"
 	}
 }
 
