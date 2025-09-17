@@ -51,20 +51,18 @@ func GenerateLevel(levelNum int, state *entity.GameState) *entity.Level {
 
 func generateRoomsInGrid(level *entity.Level) {
 	gridSize := 3
-	roomsCreated := 0
-	// Гарантированно создаем минимум 3 комнат
-	for roomsCreated < 3 {
-		for gridY := 0; gridY < gridSize && roomsCreated < 3; gridY++ {
-			for gridX := 0; gridX < gridSize && roomsCreated < 3; gridX++ {
-				// 70% chance to create a room in this grid cell
-				if roomsCreated < 3 || rand.Intn(100) <= 80 {
-					if createRoomInGridCell(level, gridX, gridY, gridSize) { // Убираем levelNum
-						roomsCreated++
-					}
+	
+	for gridY := 0; gridY < gridSize; gridY++ {
+		for gridX := 0; gridX < gridSize; gridX++ {
+			// Гарантируем минимум 3 комнаты, затем 50% шанс для остальных
+			if len(level.Rooms) < 3 || rand.Intn(100) <= 50 {
+				if createRoomInGridCell(level, gridX, gridY, gridSize) {
+					// Комната создана успешно
 				}
 			}
 		}
 	}
+	
 	// Устанавливаем стартовую и выходную комнаты
 	if len(level.Rooms) > 0 {
 		level.StartRoom = level.Rooms[0]
