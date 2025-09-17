@@ -137,6 +137,8 @@ func createRoomInGridCell(level *entity.Level, gridX, gridY, gridSize int) bool 
 	room := &entity.Room{
 		X:       x,
 		Y:       y,
+		GridX:   gridX,
+		GridY:   gridY,
 		Width:   roomWidth,
 		Height:  roomHeight,
 		Enemies: make([]*entity.Enemy, 0),
