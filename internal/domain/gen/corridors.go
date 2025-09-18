@@ -1,7 +1,6 @@
 package gen
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -9,10 +8,10 @@ import (
 	"rogue-go/internal/domain/entity"
 )
 
-
-
-
-// теперь пороб
+//позиция комнаты в сетке кораты
+type GridPos struct {
+	X, Y int
+}
 
 
 //структура для  нахождания компонентов свзяности и для построения MST
@@ -56,51 +55,39 @@ func (d *DSU) Find(x int) int {
 //Объединяет два множества, к которым принадлежат элементы x и y, в одно новое множество.
 func (d *DSU) Union(x, y int){
 	d.parent[d.Find(x)] = d.Find(y)
-} 
-
-
-//MST, алгоритм Крускала - берет список ребр и возвращает те что попали в остов
-func buildMST(edges []entity.Edge, n int) []entity.Edge {
-
-	//сортируем ребра по весу
-	sort.Slice(edges, func(i, j int) bool {
-		return edges[i].Weight < edges[j].Weight
-	})
-
-	//DSU используется для отслеживания уже объединенных компонент графа.
-	dsu := NewDSU(n)
-
-	var mst []entity.Edge
-
-	for _, edge := range edges {
-		//DSU Oпределяет, принадлежат ли концы этого ребра к уже существующим компонентам, 
-		//и если нет, то добавляет ребро и объединяет компоненты.
-		if !dsu.Connected(edge.U, edge.U) {
-			dsu.Union(edge.U, edge.V)
-			mst = append(mst, edge)
-		}
-	}
-
-	return mst
 }
+
+// будет планировщиком соединений
+type CorridorPlaner struct {
+	level *entity.Level
+	dsu   *DSU
+	edges []entity.Edge
+}
+
+func NewCorridorPlaner(level *entity.Level) *CorridorPlaner {
+	return &CorridorPlaner{
+		level: level,
+		dsu:   NewDSU(len(level.Rooms)),
+		edges: buildEdges(level.Rooms),
+	}
+}
+
 
 //строим ребра 
 func buildEdges(rooms []*entity.Room) []entity.Edge {
-	roomMap := make(map[string]int)
-
+	roomMap := make(map[GridPos]int)
 	for i, room := range rooms {
-		key := fmt.Sprintf("%d,%d", room.GridX, room.GridY)
-		roomMap[key] = i
+		roomMap[GridPos{room.GridX, room.GridY}] = i
 	}
 	var edges []entity.Edge
 
 	for i, room := range rooms {
 		//если справа сосед
-		if j, ok := roomMap[fmt.Sprintf("%d,%d", room.GridX+1, room.GridY)]; ok {
+		if j, ok := roomMap[GridPos{room.GridX+1, room.GridY}]; ok {
 			edges = append(edges, entity.Edge{U: i, V: j, Weight: distanceBetweenRooms(room, rooms[j])})
 		}
 		// елси сосед снизу
-		if j, exists := roomMap[fmt.Sprintf("%d,%d", room.GridX, room.GridY+1)]; exists {
+		if j, ok := roomMap[GridPos{ room.GridX, room.GridY+1}]; ok {
 			edges = append(edges, entity.Edge{U: i, V: j, Weight: distanceBetweenRooms(room, rooms[j])})
 		}
 	}
@@ -108,12 +95,32 @@ func buildEdges(rooms []*entity.Room) []entity.Edge {
 	return edges
 }
 
-func ensuringConnectivity(level *entity.Level, dsu *DSU){
+
+
+//строим MST
+func (p *CorridorPlaner) BuildMST() {
+
+	//сортируем ребра по весу
+	sort.Slice(p.edges, func(i, j int) bool {
+		return p.edges[i].Weight < p.edges[j].Weight
+	})
+
+	for _, edge := range p.edges {
+		//DSU Oпределяет, принадлежат ли концы этого ребра к уже существующим компонентам, 
+		//и если нет, то добавляет ребро и объединяет компоненты.
+		if !p.dsu.Connected(edge.U, edge.U) && !hasCorridorBetween(p.level, p.level.Rooms[edge.U], p.level.Rooms[edge.V]) {
+			p.dsu.Union(edge.U, edge.V)
+			connectTwoRooms(p.level, p.level.Rooms[edge.U], p.level.Rooms[edge.V])
+		}
+	}
+}
+
+
+func (p *CorridorPlaner) EnsureConnectivity(){
 	for {
 		comps := make(map[int][]int)
-		for i := range level.Rooms {
-			root := dsu.Find(i)
-			comps[root] = append(comps[root], i)
+		for i := range p.level.Rooms {
+			comps[p.dsu.Find(i)] = append(comps[p.dsu.Find(i)], i)
 		}
 		if len(comps) <= 1 {
 			break
@@ -130,7 +137,7 @@ func ensuringConnectivity(level *entity.Level, dsu *DSU){
 
 		for _, a := range comps[roots[0]] {
 			for _, b := range comps[roots[1]] {
-				dist := distanceBetweenRooms(level.Rooms[a], level.Rooms[b])
+				dist := distanceBetweenRooms(p.level.Rooms[a], p.level.Rooms[b])
 				if dist < bestDist {
 					bestDist = dist
 					bestEdge = &entity.Edge{U: a, V: b, Weight: dist}
@@ -139,11 +146,32 @@ func ensuringConnectivity(level *entity.Level, dsu *DSU){
 		}
 
 		if bestEdge != nil {
-			dsu.Union(bestEdge.U, bestEdge.V)
-			connectTwoRooms(level, level.Rooms[bestEdge.U], level.Rooms[bestEdge.V])
+			p.dsu.Union(bestEdge.U, bestEdge.V)
+			connectTwoRooms(p.level, p.level.Rooms[bestEdge.U], p.level.Rooms[bestEdge.V])
 		}
 	}
 
+}
+
+// сдучайые доплнительные корриодоры
+
+func (p *CorridorPlaner) AddExtraCorridor(){
+	// рандомно доп корридоры
+	extraConnections := int(math.Sqrt(float64(len(p.level.Rooms))))
+
+	if extraConnections == 0 || len(p.edges) == 0 {
+		return
+	}
+	//перемешиваем ребра
+	rand.Shuffle(len(p.edges), func(i, j int) { p.edges[i], p.edges[j] = p.edges[j], p.edges[i]})
+
+	for i := 0; i < extraConnections && i < len(p.edges); i++ {
+		randomEdge := p.edges[i]
+		if !p.dsu.Connected(randomEdge.U, randomEdge.V) && !hasCorridorBetween(p.level, p.level.Rooms[randomEdge.U], p.level.Rooms[randomEdge.V]){
+			p.dsu.Union(randomEdge.U, randomEdge.V)
+			connectTwoRooms(p.level, p.level.Rooms[randomEdge.U], p.level.Rooms[randomEdge.V])
+		}
+	}
 }
 
 
@@ -152,33 +180,9 @@ func connectRoomsWithCorridors(level *entity.Level) {
 	if len(level.Rooms) <= 1 {
 		return
 	}
-
-	edges := buildEdges(level.Rooms)
-	mstEdges := buildMST(edges, len(level.Rooms))
-	dsu := NewDSU(len(level.Rooms))
-
-
-   	 // В строим MST
-   	 for _, edge := range mstEdges {
-            if !hasCorridorBetween(level, level.Rooms[edge.U], level.Rooms[edge.V]) {
-                dsu.Union(edge.U, edge.V)
-                connectTwoRooms(level, level.Rooms[edge.U], level.Rooms[edge.V])
-            }
-        }
-
-
-	// Обспечиваем связность - елис нет связи то соединяем комнаты
-	ensuringConnectivity(level, dsu)
-
-	// рандомно доп корридоры
-	extraConnections := int(math.Sqrt(float64(len(level.Rooms))))
-	for i := 0; i < extraConnections && i < len(edges); i++ {
-		randomEdge := edges[rand.Intn(len(edges))]
-		if !dsu.Connected(randomEdge.U, randomEdge.V) {
-			dsu.Union(randomEdge.U, randomEdge.V)
-			connectTwoRooms(level, level.Rooms[randomEdge.U], level.Rooms[randomEdge.V])
-		}
-	}
+	planner := NewCorridorPlaner(level)
+	planner.BuildMST()
+	planner.EnsureConnectivity()
 }
 
 
