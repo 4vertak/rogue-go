@@ -184,3 +184,11 @@ func (g *Game) GetDoorSymbol(door *entity.Door) string {
 func (g *Game) GetDoorColor(door *entity.Door) int16 {
     return rules.GetDoorColor(door)
 }
+
+func (g *Game) InteractWithNearest() {
+    rules.InteractWithNearest(g.State)
+}
+
+func (g *Game) GetNearestInteractable() (interface{}, float64) {
+    return rules.GetNearestInteractable(g.State)
+}

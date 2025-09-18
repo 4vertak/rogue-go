@@ -4,6 +4,7 @@ import (
 	"math"
 	"rogue-go/internal/domain/entity"
 	"strconv"
+	"fmt"
 
 	"github.com/rthornton128/goncurses"
 )
@@ -569,59 +570,65 @@ func (gi *GameInterface) renderMinimap() {
 
 // Добавим функцию для рендеринга дверей в 3D
 func (gi *GameInterface) renderDoors3D() {
-	state := gi.game.State
-	maxY, maxX := gi.gameWindow.MaxYX()
-	screenWidth := maxX - 2
-	screenHeight := maxY - 2
+    state := gi.game.State
+    maxY, maxX := gi.gameWindow.MaxYX()
+    screenWidth := maxX - 2
+    screenHeight := maxY - 2
 
-	for _, door := range state.Level.Doors {
-		// Проверяем видимость двери
-		if !state.Level.Visible[door.Position.X][door.Position.Y] {
-			continue
-		}
+    for _, door := range state.Level.Doors {
+        if !state.Level.Visible[door.Position.X][door.Position.Y] {
+            continue
+        }
 
-		// Вычисляем позицию двери относительно игрока
-		relX := door.Position.X - state.Player.Position.X
-		relY := door.Position.Y - state.Player.Position.Y
+        // Вычисляем позицию двери относительно игрока
+        relX := float64(door.Position.X) - float64(state.Player.Position.X) + 0.5
+        relY := float64(door.Position.Y) - float64(state.Player.Position.Y) + 0.5
 
-		// Преобразуем в экранные координаты (упрощенная версия)
-		angle := math.Atan2(float64(relY), float64(relX)) -
-			math.Atan2(state.PlayerDir.Y, state.PlayerDir.X)
+        // Преобразуем в экранные координаты
+        transformX := relY*state.PlayerDir.X - relX*state.PlayerDir.Y
+        transformY := relY*state.PlayerDir.Y + relX*state.PlayerDir.X
 
-		// Нормализуем угол
-		for angle < -math.Pi {
-			angle += 2 * math.Pi
-		}
-		for angle > math.Pi {
-			angle -= 2 * math.Pi
-		}
+        if transformY <= 0 {
+            continue // Дверь позади игрока
+        }
 
-		// Если дверь в поле зрения
-		if math.Abs(angle) < math.Pi/3 {
-			screenX := int((angle + math.Pi/3) * float64(screenWidth) / (2 * math.Pi / 3))
-			distance := math.Sqrt(float64(relX*relX + relY*relY))
+        // Вычисляем экранную позицию
+        screenX := int(float64(screenWidth)/2 * (1 + transformX/transformY))
+        distance := math.Sqrt(relX*relX + relY*relY)
 
-			// Вычисляем высоту двери
-			height := int(float64(screenHeight) / distance)
-			if height > screenHeight {
-				height = screenHeight
-			}
+        // Вычисляем размер двери
+        doorSize := int(float64(screenHeight) / distance)
+        if doorSize < 1 {
+            doorSize = 1
+        }
+        if doorSize > screenHeight/2 {
+            doorSize = screenHeight / 2
+        }
 
-			// Центрируем дверь по вертикали
-			startY := (screenHeight - height) / 2
-			if startY < 0 {
-				startY = 0
-			}
+        // Центрируем по вертикали
+        screenY := screenHeight/2 - doorSize/2
 
-			// Рисуем дверь
-			doorColor := gi.game.GetKeyColor(door.Color)
-			for y := startY; y < startY+height && y < screenHeight; y++ {
-				gi.gameWindow.ColorOn(doorColor)
-				gi.gameWindow.MovePrint(y+1, screenX+1, "D")
-				gi.gameWindow.ColorOff(doorColor)
-			}
-		}
-	}
+        // Рисуем дверь, если она в поле зрения
+        if screenX >= -doorSize && screenX < screenWidth+doorSize &&
+           screenY >= -doorSize && screenY < screenHeight+doorSize {
+            
+            doorColor := gi.game.GetDoorColor(door)
+            doorSymbol := gi.game.GetDoorSymbol(door)
+            
+            if door.IsLocked {
+                doorSymbol = "X" // Заблокированная дверь
+                doorColor = 1    // Красный цвет
+            }
+
+            gi.gameWindow.ColorOn(doorColor)
+            for y := screenY; y < screenY+doorSize && y < screenHeight; y++ {
+                if y >= 0 {
+                    gi.gameWindow.MovePrint(y+1, screenX+1, doorSymbol)
+                }
+            }
+            gi.gameWindow.ColorOff(doorColor)
+        }
+    }
 }
 
 func (gi *GameInterface) renderStatus() {
@@ -909,4 +916,48 @@ func (gi *GameInterface) renderObject3D(pos entity.Position, symbol string, colo
         }
         gi.gameWindow.ColorOff(color)
     }
+}
+
+// Рендерим HUD поверх 3D сцены
+func (gi *GameInterface) render3DHUD() {
+    state := gi.game.State
+    maxY, maxX := gi.gameWindow.MaxYX()
+    
+    // Полупрозрачный фон для HUD
+    gi.gameWindow.ColorOn(7)
+    for x := 0; x < maxX; x++ {
+        gi.gameWindow.MovePrint(maxY-3, x, " ")
+    }
+    gi.gameWindow.ColorOff(7)
+    
+    // Информация о здоровье
+    healthPercent := float64(state.Player.Health) / float64(state.Player.MaxHealth)
+    healthBar := "["
+    barWidth := 20
+    filled := int(healthPercent * float64(barWidth))
+    
+    for i := 0; i < barWidth; i++ {
+        if i < filled {
+            healthBar += "="
+        } else {
+            healthBar += " "
+        }
+    }
+    healthBar += "]"
+    
+    gi.gameWindow.MovePrint(maxY-2, 1, "HP: "+healthBar)
+    gi.gameWindow.MovePrint(maxY-2, 25, 
+        fmt.Sprintf("%d/%d", state.Player.Health, state.Player.MaxHealth))
+    
+    // Текущее оружие
+    if state.Player.CurrentWeapon != nil {
+        gi.gameWindow.MovePrint(maxY-1, 1, 
+            "Weapon: "+gi.game.GetItemName(state.Player.CurrentWeapon))
+    } else {
+        gi.gameWindow.MovePrint(maxY-1, 1, "Weapon: None")
+    }
+    
+    // Подсказки управления
+    controls := "WASD:Move  Mouse:Look  E:Inventory  Space:Interact  T:2D/3D"
+    gi.gameWindow.MovePrint(maxY-1, maxX-len(controls)-1, controls)
 }

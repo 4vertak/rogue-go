@@ -257,10 +257,13 @@ func MoveIn3D(state *entity.GameState, distance int) {
 		player.Position.Y = int(newY)
 		UpdateVisibility(state)
 		utils.AddMessage(state, "Moved forward")
+
+		// Автоподбор предметов и проверка врагов
+        checkForAutoPickup(state)
+        CheckForEnemies(state)
 	} else {
 		utils.AddMessage(state, "Cannot move - obstacle ahead")
 	}
-
 }
 
 func canMoveTo3D(state *entity.GameState, x, y int) bool {
@@ -311,6 +314,9 @@ func Strafe(state *entity.GameState, distance int) {
 		player.Position.X = int(newX)
 		player.Position.Y = int(newY)
 		utils.AddMessage(state, "Strafed")
+
+		checkForAutoPickup(state)
+        CheckForEnemies(state)
 	}
 
 }
@@ -349,4 +355,19 @@ func InteractWithDoor(state *entity.GameState) {
 	if !doorFound {
 		utils.AddMessage(state, "No door nearby")
 	}
+}
+
+// Новая функция для автоподбора в 3D
+func checkForAutoPickup(state *entity.GameState) {
+    playerPos := state.Player.Position
+    for i := len(state.Items) - 1; i >= 0; i-- {
+        item := state.Items[i]
+        if item.Position.X == playerPos.X && item.Position.Y == playerPos.Y {
+            if canAddToBackpack(state, item) {
+                addToBackpack(state, item)
+                state.Items = append(state.Items[:i], state.Items[i+1:]...)
+                utils.AddMessage(state, "Picked up item automatically")
+            }
+        }
+    }
 }
