@@ -13,8 +13,9 @@ func (gi *GameInterface) createWindows() {
 	rows, cols := gi.stdscr.MaxYX()
 
 	// Главное игровое окно (центр экрана)
-	gameRows := rows - 6
+	gameRows := rows - 6  // Оставляем место для HUD в 3D режиме
 	gameCols := cols - 31
+	
 	if gameRows < 10 {
 		gameRows = 10
 	}
@@ -64,6 +65,7 @@ func (gi *GameInterface) renderGame() {
 		gi.renderMap()
 	}
 
+	// Всегда рендерим остальные окна независимо от режима
 	gi.renderStatus()
 	gi.renderMessageBar()
 	gi.renderInventory()
@@ -391,6 +393,9 @@ func (gi *GameInterface) render3D() {
 
     // Рендерим двери
     gi.renderDoors3D()
+
+	// Рендерим HUD поверх 3D сцены
+	gi.render3DHUD()
 
 	gi.gameWindow.Refresh()
 }
@@ -920,44 +925,44 @@ func (gi *GameInterface) renderObject3D(pos entity.Position, symbol string, colo
 
 // Рендерим HUD поверх 3D сцены
 func (gi *GameInterface) render3DHUD() {
-    state := gi.game.State
-    maxY, maxX := gi.gameWindow.MaxYX()
-    
-    // Полупрозрачный фон для HUD
-    gi.gameWindow.ColorOn(7)
-    for x := 0; x < maxX; x++ {
-        gi.gameWindow.MovePrint(maxY-3, x, " ")
-    }
-    gi.gameWindow.ColorOff(7)
-    
-    // Информация о здоровье
-    healthPercent := float64(state.Player.Health) / float64(state.Player.MaxHealth)
-    healthBar := "["
-    barWidth := 20
-    filled := int(healthPercent * float64(barWidth))
-    
-    for i := 0; i < barWidth; i++ {
-        if i < filled {
-            healthBar += "="
-        } else {
-            healthBar += " "
-        }
-    }
-    healthBar += "]"
-    
-    gi.gameWindow.MovePrint(maxY-2, 1, "HP: "+healthBar)
-    gi.gameWindow.MovePrint(maxY-2, 25, 
-        fmt.Sprintf("%d/%d", state.Player.Health, state.Player.MaxHealth))
-    
-    // Текущее оружие
-    if state.Player.CurrentWeapon != nil {
-        gi.gameWindow.MovePrint(maxY-1, 1, 
-            "Weapon: "+gi.game.GetItemName(state.Player.CurrentWeapon))
-    } else {
-        gi.gameWindow.MovePrint(maxY-1, 1, "Weapon: None")
-    }
-    
-    // Подсказки управления
-    controls := "WASD:Move  Mouse:Look  E:Inventory  Space:Interact  T:2D/3D"
-    gi.gameWindow.MovePrint(maxY-1, maxX-len(controls)-1, controls)
+	state := gi.game.State
+	maxY, maxX := gi.gameWindow.MaxYX()
+	
+	// Полупрозрачный фон для HUD
+	gi.gameWindow.ColorOn(7)
+	for x := 0; x < maxX; x++ {
+		gi.gameWindow.MovePrint(maxY-3, x, " ")
+	}
+	gi.gameWindow.ColorOff(7)
+	
+	// Информация о здоровье
+	healthPercent := float64(state.Player.Health) / float64(state.Player.MaxHealth)
+	healthBar := "["
+	barWidth := 20
+	filled := int(healthPercent * float64(barWidth))
+	
+	for i := 0; i < barWidth; i++ {
+		if i < filled {
+			healthBar += "="
+		} else {
+			healthBar += " "
+		}
+	}
+	healthBar += "]"
+	
+	gi.gameWindow.MovePrint(maxY-2, 1, "HP: "+healthBar)
+	gi.gameWindow.MovePrint(maxY-2, 25, 
+		fmt.Sprintf("%d/%d", state.Player.Health, state.Player.MaxHealth))
+	
+	// Текущее оружие
+	if state.Player.CurrentWeapon != nil {
+		gi.gameWindow.MovePrint(maxY-1, 1, 
+			"Weapon: "+gi.game.GetItemName(state.Player.CurrentWeapon))
+	} else {
+		gi.gameWindow.MovePrint(maxY-1, 1, "Weapon: None")
+	}
+	
+	// Подсказки управления
+	controls := "WASD:Move  Mouse:Look  E:Inventory  Space:Interact  T:2D/3D"
+	gi.gameWindow.MovePrint(maxY-1, maxX-len(controls)-1, controls)
 }

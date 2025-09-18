@@ -91,19 +91,19 @@ func (gi *GameInterface) handle3DInput(char goncurses.Key) {
 			gi.game.AddMessage("Mini-map disabled")
 		}
 
-	// Действия с инвентарем - меняем клавиши для 3D режима
-	case '1':
+	// Действия с инвентарем - добавляем обработку оригинальных клавиш
+	case 'h', 'H':
 		gi.showUseItemMenu(entity.Weapon)
-	case '2':
+	case 'j', 'J':
 		gi.showUseItemMenu(entity.Food)
-	case '3':
+	case 'k', 'K':
 		gi.showUseItemMenu(entity.Potion)
-	case '4':
+	case 'e', 'E':
 		gi.showUseItemMenu(entity.Scroll)
-	case '5':
-		gi.game.PickUpItem()
 	case 'i', 'I':
 		gi.showInventory()
+	case 'p', 'P':
+		gi.game.PickUpItem()
 
 	// Быстрое поворачивание (новые клавиши)
 	case 'q', 'Q':
