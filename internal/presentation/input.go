@@ -117,9 +117,9 @@ func (gi *GameInterface) handle3DInput(char goncurses.Key) {
 			state.PlayerAngle -= 360
 		}
 
-	// Взаимодействие с дверьми
-	case ' ', '\n', '\r': // Пробел или Enter
-		gi.game.InteractWithDoor()
+    case ' ', '\n', '\r': // Пробел или Enter
+        // Взаимодействие с ближайшим объектом
+        gi.interactWithNearestObject()
 
 	// Бег
 	case goncurses.KEY_UP:
@@ -131,4 +131,38 @@ func (gi *GameInterface) handle3DInput(char goncurses.Key) {
 	case goncurses.KEY_ESC:
 		gi.showQuitMenu()
 	}
+}
+
+func (gi *GameInterface) interactWithNearestObject() {
+    state := gi.game.State
+    playerPos := state.Player.Position
+    
+    // Проверяем ближайшие клетки
+    directions := []entity.Position{
+        {X: 0, Y: 1}, {X: 1, Y: 0}, {X: 0, Y: -1}, {X: -1, Y: 0},
+        {X: 1, Y: 1}, {X: 1, Y: -1}, {X: -1, Y: 1}, {X: -1, Y: -1},
+    }
+    
+    for _, dir := range directions {
+        checkX := playerPos.X + dir.X
+        checkY := playerPos.Y + dir.Y
+        
+        // Проверяем предметы
+        for _, item := range state.Items { // УБРАТЬ i
+            if item.Position.X == checkX && item.Position.Y == checkY {
+                gi.game.PickUpItem()
+                return
+            }
+        }
+        
+        // Проверяем врагов
+        for i, enemy := range state.Enemies {
+            if enemy.Position.X == checkX && enemy.Position.Y == checkY && enemy.IsVisible {
+                gi.game.Attack(i)
+                return
+            }
+        }
+    }
+    
+    gi.game.AddMessage("Nothing to interact with nearby")
 }

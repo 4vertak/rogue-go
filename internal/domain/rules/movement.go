@@ -255,6 +255,7 @@ func MoveIn3D(state *entity.GameState, distance int) {
 	if canMoveTo3D(state, int(newX), int(newY)) {
 		player.Position.X = int(newX)
 		player.Position.Y = int(newY)
+		UpdateVisibility(state)
 		utils.AddMessage(state, "Moved forward")
 	} else {
 		utils.AddMessage(state, "Cannot move - obstacle ahead")

@@ -33,12 +33,14 @@ func UpdateVisibility(state *entity.GameState) {
 		}
 	}
 
-	// Обновляем видимость врагов
-	for _, enemy := range state.Enemies {
-		if enemy.InvisibilityCooldown == 0 {
-			enemy.IsVisible = state.Level.Visible[enemy.Position.X][enemy.Position.Y]
-		}
-	}
+    // Обновляем видимость врагов
+    for _, enemy := range state.Enemies {
+        if enemy.InvisibilityCooldown == 0 {
+            enemy.IsVisible = state.Level.Visible[enemy.Position.X][enemy.Position.Y]
+        } else {
+            enemy.IsVisible = false // Призраки невидимы во время кулдауна
+        }
+    }
 }
 
 func hasLineOfSight(state *entity.GameState, start, end entity.Position) bool {

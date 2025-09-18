@@ -236,10 +236,10 @@ func (gi *GameInterface) render3D() {
 	state := gi.game.State
 	gi.gameWindow.Erase()
 
-	player := state.Player
-	level := state.Level
-	maxY, maxX := gi.gameWindow.MaxYX()
-	width, height := maxX-2, maxY-2
+    player := state.Player
+    level := state.Level
+    maxY, maxX := gi.gameWindow.MaxYX()
+    width, height := maxX-2, maxY-2
 
 	// Максимальное расстояние видимости
 	maxViewDistance := 15.0
@@ -380,13 +380,16 @@ func (gi *GameInterface) render3D() {
 		}
 	}
 
-	// Рендерим мини-карту ПОСЛЕ стен, чтобы она была поверх них
-	if gi.showMinimap {
-		gi.renderMinimap()
-	}
+    // Рендерим объекты ПОСЛЕ стен
+    gi.renderObjects3D()
 
-	// Рендерим двери поверх всего
-	gi.renderDoors3D()
+    // Рендерим мини-карту ПОСЛЕ всего
+    if gi.showMinimap {
+        gi.renderMinimap()
+    }
+
+    // Рендерим двери
+    gi.renderDoors3D()
 
 	gi.gameWindow.Refresh()
 }
@@ -812,4 +815,98 @@ func (gi *GameInterface) initColors() {
 	goncurses.InitPair(24, goncurses.C_RED, goncurses.C_BLACK)     // Яркий
 	goncurses.InitPair(25, goncurses.C_MAGENTA, goncurses.C_BLACK) // Средний
 	goncurses.InitPair(26, goncurses.C_BLUE, goncurses.C_BLACK)    // Темный
+}
+
+// Функция для рендеринга объектов (монстров и предметов)
+func (gi *GameInterface) renderObjects3D() {
+    state := gi.game.State
+
+    // Рендерим врагов
+    for _, enemy := range state.Enemies {
+        if !enemy.IsVisible || !state.Level.Visible[enemy.Position.X][enemy.Position.Y] {
+            continue
+        }
+        gi.renderObject3D(enemy.Position, gi.game.GetEnemySymbol(enemy), gi.game.GetEnemyColor(enemy))
+    }
+
+    // Рендерим предметы
+    for _, item := range state.Items {
+        if !state.Level.Visible[item.Position.X][item.Position.Y] {
+            continue
+        }
+        
+        var symbol string
+        var color int16
+        
+        // ОСОБАЯ ОБРАБОТКА ДЛЯ КЛЮЧЕЙ
+        if item.Type == entity.Scroll && (item.SubType == entity.KeyRed || item.SubType == entity.KeyBlue ||
+            item.SubType == entity.KeyGreen || item.SubType == entity.KeyYellow) {
+            symbol = gi.game.GetKeySymbol(item.SubType)
+            color = gi.game.GetKeyColor(item.SubType)
+        } else {
+            symbol = gi.game.GetItemSymbol(item)
+            color = gi.game.GetItemColor(item)
+        }
+        
+        gi.renderObject3D(item.Position, symbol, color)
+    }
+
+    // Рендерим выход
+    if state.Level.ExitRoom != nil {
+        exitX := state.Level.ExitRoom.X + state.Level.ExitRoom.Width/2
+        exitY := state.Level.ExitRoom.Y + state.Level.ExitRoom.Height/2
+        if state.Level.Visible[exitX][exitY] {
+            gi.renderObject3D(entity.Position{X: exitX, Y: exitY}, ">", 3)
+        }
+    }
+}
+
+// Функция для рендеринга отдельных объектов
+func (gi *GameInterface) renderObject3D(pos entity.Position, symbol string, color int16) {
+    state := gi.game.State
+    maxY, maxX := gi.gameWindow.MaxYX() // Получаем оба размера
+    screenWidth := maxX - 2
+    screenHeight := maxY - 2
+
+    // Вычисляем позицию объекта относительно игрока
+    relX := float64(pos.X) - float64(state.Player.Position.X) + 0.5
+    relY := float64(pos.Y) - float64(state.Player.Position.Y) + 0.5
+
+    // Преобразуем в экранные координаты
+    transformX := relY*state.PlayerDir.X - relX*state.PlayerDir.Y
+    transformY := relY*state.PlayerDir.Y + relX*state.PlayerDir.X
+
+    if transformY <= 0 {
+        return // Объект позади игрока
+    }
+
+    // Вычисляем экранную позицию
+    screenX := int(float64(screenWidth)/2 * (1 + transformX/transformY))
+    distance := math.Sqrt(relX*relX + relY*relY)
+
+    // Вычисляем размер объекта (чем дальше, тем меньше)
+    objectSize := int(float64(screenHeight) / distance)
+    if objectSize < 1 {
+        objectSize = 1
+    }
+    if objectSize > screenHeight/2 {
+        objectSize = screenHeight / 2
+    }
+
+    // Вычисляем вертикальную позицию
+    screenY := screenHeight/2 - objectSize/2
+
+    // Проверяем, находится ли объект в поле зрения
+    if screenX >= -objectSize && screenX < screenWidth+objectSize &&
+        screenY >= -objectSize && screenY < screenHeight+objectSize {
+        
+        // Рисуем объект
+        gi.gameWindow.ColorOn(color)
+        for y := screenY; y < screenY+objectSize && y < screenHeight; y++ {
+            if y >= 0 {
+                gi.gameWindow.MovePrint(y+1, screenX+1, symbol)
+            }
+        }
+        gi.gameWindow.ColorOff(color)
+    }
 }
