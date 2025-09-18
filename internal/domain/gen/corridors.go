@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"sync" //экперименты с многопочтность)))
 
 	"rogue-go/internal/domain/entity"
 )
@@ -73,24 +74,46 @@ func NewCorridorPlaner(level *entity.Level) *CorridorPlaner {
 }
 
 
-//строим ребра 
+//строим ребра  -доавил парарллельный расет  ребер между соедями
 func buildEdges(rooms []*entity.Room) []entity.Edge {
 	roomMap := make(map[GridPos]int)
 	for i, room := range rooms {
 		roomMap[GridPos{room.GridX, room.GridY}] = i
 	}
-	var edges []entity.Edge
+
+	results := make(chan entity.Edge, len(rooms) * 2) //2 cоседа справа и снизу
+	var wg sync.WaitGroup
 
 	for i, room := range rooms {
 		//если справа сосед
 		if j, ok := roomMap[GridPos{room.GridX+1, room.GridY}]; ok {
-			edges = append(edges, entity.Edge{U: i, V: j, Weight: distanceBetweenRooms(room, rooms[j])})
+			wg.Add(1)
+			go func(a, b int) {
+				defer wg.Done()
+				d := distanceBetweenRooms(rooms[a], rooms[b]) 
+				results <- entity.Edge{U: a, V: b, Weight: d}
+			}(i, j)
 		}
 		// елси сосед снизу
 		if j, ok := roomMap[GridPos{ room.GridX, room.GridY+1}]; ok {
-			edges = append(edges, entity.Edge{U: i, V: j, Weight: distanceBetweenRooms(room, rooms[j])})
+			wg.Add(1)
+			go func(a, b int) {
+				defer wg.Done()
+				d := distanceBetweenRooms(rooms[a], rooms[b]) 
+				results <- entity.Edge{U: a, V: b, Weight: d}
+			}(i, j)
 		}
 	}
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	var edges []entity.Edge
+	for edge := range results {
+		edges = append(edges, edge)
+	}
+
 
 	return edges
 }
