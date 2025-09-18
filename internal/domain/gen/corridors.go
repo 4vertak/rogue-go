@@ -7,21 +7,20 @@ import (
 	"sync" //экперименты с многопочтность)))
 
 	"rogue-go/internal/domain/entity"
+	"rogue-go/internal/domain/utils"
 )
 
-//позиция комнаты в сетке кораты
+// позиция комнаты в сетке кораты
 type GridPos struct {
 	X, Y int
 }
 
-
 //структура для  нахождания компонентов свзяности и для построения MST
 
-//DSU представляет собой набор корневых деревьев (лес). 
-//Каждое дерево соответствует определённому множеству. 
+//DSU представляет собой набор корневых деревьев (лес).
+//Каждое дерево соответствует определённому множеству.
 //При реализации DSU необходимо лишь подниматься вверх по деревьям,
 // поэтому достаточно хранить для каждой вершины только номер её прямого предка.
-
 
 type DSU struct {
 	parent []int
@@ -38,9 +37,8 @@ func NewDSU(n int) *DSU {
 	return &DSU{parent: p}
 }
 
-
-//Поэтому для определения, принадлежат ли два элемента к одному и тому же множеству, 
-//для каждого элемента нужно найти корень соответствующего дерева (поднимаясь вверх пока это возможно) и сравнить эти корни.
+// Поэтому для определения, принадлежат ли два элемента к одному и тому же множеству,
+// для каждого элемента нужно найти корень соответствующего дерева (поднимаясь вверх пока это возможно) и сравнить эти корни.
 func (d *DSU) Connected(x, y int) bool {
 	return d.Find(x) == d.Find(y)
 }
@@ -52,10 +50,55 @@ func (d *DSU) Find(x int) int {
 	return d.parent[x]
 }
 
-
-//Объединяет два множества, к которым принадлежат элементы x и y, в одно новое множество.
-func (d *DSU) Union(x, y int){
+// Объединяет два множества, к которым принадлежат элементы x и y, в одно новое множество.
+func (d *DSU) Union(x, y int) {
 	d.parent[d.Find(x)] = d.Find(y)
+}
+
+type Exit struct {
+	X, Y int
+	Side string
+}
+
+type CorridorContext struct {
+	exits map[*entity.Room][]Exit
+}
+
+func NewCorridorContext() *CorridorContext {
+	return &CorridorContext{
+		exits: make(map[*entity.Room][]Exit),
+	}
+}
+
+// Локальная версия randomExit
+func (ctx *CorridorContext) randomExit(room *entity.Room, side string) (int, int, bool) {
+	// Проверка — есть ли уже выход на этой стороне
+	for _, e := range ctx.exits[room] {
+		if e.Side == side {
+			return 0, 0, false
+		}
+	}
+
+	var x, y int
+	switch side {
+	case "left":
+		x = room.X
+		y = rand.Intn(room.Height-2) + room.Y + 1
+	case "right":
+		x = room.X + room.Width - 1
+		y = rand.Intn(room.Height-2) + room.Y + 1
+	case "top":
+		y = room.Y
+		x = rand.Intn(room.Width-2) + room.X + 1
+	case "bottom":
+		y = room.Y + room.Height - 1
+		x = rand.Intn(room.Width-2) + room.X + 1
+	}
+
+	exit := Exit{X: x, Y: y, Side: side}
+	ctx.exits[room] = append(ctx.exits[room], exit)
+
+	return x, y, true
 }
 
 // будет планировщиком соединений
@@ -63,6 +106,7 @@ type CorridorPlaner struct {
 	level *entity.Level
 	dsu   *DSU
 	edges []entity.Edge
+	ctx   *CorridorContext
 }
 
 func NewCorridorPlaner(level *entity.Level) *CorridorPlaner {
@@ -70,36 +114,36 @@ func NewCorridorPlaner(level *entity.Level) *CorridorPlaner {
 		level: level,
 		dsu:   NewDSU(len(level.Rooms)),
 		edges: buildEdges(level.Rooms),
+		ctx:   NewCorridorContext(),
 	}
 }
 
-
-//строим ребра  -доавил парарллельный расет  ребер между соедями
+// строим ребра  -доавил парарллельный расет  ребер между соедями
 func buildEdges(rooms []*entity.Room) []entity.Edge {
 	roomMap := make(map[GridPos]int)
 	for i, room := range rooms {
 		roomMap[GridPos{room.GridX, room.GridY}] = i
 	}
 
-	results := make(chan entity.Edge, len(rooms) * 2) //2 cоседа справа и снизу
+	results := make(chan entity.Edge, len(rooms)*2) //2 cоседа справа и снизу
 	var wg sync.WaitGroup
 
 	for i, room := range rooms {
 		//если справа сосед
-		if j, ok := roomMap[GridPos{room.GridX+1, room.GridY}]; ok {
+		if j, ok := roomMap[GridPos{room.GridX + 1, room.GridY}]; ok {
 			wg.Add(1)
 			go func(a, b int) {
 				defer wg.Done()
-				d := distanceBetweenRooms(rooms[a], rooms[b]) 
+				d := distanceBetweenRooms(rooms[a], rooms[b])
 				results <- entity.Edge{U: a, V: b, Weight: d}
 			}(i, j)
 		}
 		// елси сосед снизу
-		if j, ok := roomMap[GridPos{ room.GridX, room.GridY+1}]; ok {
+		if j, ok := roomMap[GridPos{room.GridX, room.GridY + 1}]; ok {
 			wg.Add(1)
 			go func(a, b int) {
 				defer wg.Done()
-				d := distanceBetweenRooms(rooms[a], rooms[b]) 
+				d := distanceBetweenRooms(rooms[a], rooms[b])
 				results <- entity.Edge{U: a, V: b, Weight: d}
 			}(i, j)
 		}
@@ -114,13 +158,10 @@ func buildEdges(rooms []*entity.Room) []entity.Edge {
 		edges = append(edges, edge)
 	}
 
-
 	return edges
 }
 
-
-
-//строим MST
+// строим MST
 func (p *CorridorPlaner) BuildMST() {
 
 	//сортируем ребра по весу
@@ -129,17 +170,16 @@ func (p *CorridorPlaner) BuildMST() {
 	})
 
 	for _, edge := range p.edges {
-		//DSU Oпределяет, принадлежат ли концы этого ребра к уже существующим компонентам, 
+		//DSU Oпределяет, принадлежат ли концы этого ребра к уже существующим компонентам,
 		//и если нет, то добавляет ребро и объединяет компоненты.
-		if !p.dsu.Connected(edge.U, edge.U) && !hasCorridorBetween(p.level, p.level.Rooms[edge.U], p.level.Rooms[edge.V]) {
+		if !p.dsu.Connected(edge.U, edge.V) && !hasCorridorBetween(p.level, edge.U, edge.V) {
 			p.dsu.Union(edge.U, edge.V)
-			connectTwoRooms(p.level, p.level.Rooms[edge.U], p.level.Rooms[edge.V])
+			connectTwoRooms(p.level, p.ctx, edge.U, edge.V)
 		}
 	}
 }
 
-
-func (p *CorridorPlaner) EnsureConnectivity(){
+func (p *CorridorPlaner) EnsureConnectivity() {
 	for {
 		comps := make(map[int][]int)
 		for i := range p.level.Rooms {
@@ -148,11 +188,10 @@ func (p *CorridorPlaner) EnsureConnectivity(){
 		if len(comps) <= 1 {
 			break
 		}
-		
-		//соединяем два компонента  ближайшей парой
+
 		var bestEdge *entity.Edge
 		bestDist := math.MaxFloat64
-		
+
 		roots := make([]int, 0, len(comps))
 		for k := range comps {
 			roots = append(roots, k)
@@ -170,149 +209,157 @@ func (p *CorridorPlaner) EnsureConnectivity(){
 
 		if bestEdge != nil {
 			p.dsu.Union(bestEdge.U, bestEdge.V)
-			connectTwoRooms(p.level, p.level.Rooms[bestEdge.U], p.level.Rooms[bestEdge.V])
+			connectTwoRooms(p.level, p.ctx, bestEdge.U, bestEdge.V)
 		}
 	}
 
 }
 
 // сдучайые доплнительные корриодоры
-
-func (p *CorridorPlaner) AddExtraCorridor(){
-	// рандомно доп корридоры
+func (p *CorridorPlaner) AddExtraCorridor() {
 	extraConnections := int(math.Sqrt(float64(len(p.level.Rooms))))
 
 	if extraConnections == 0 || len(p.edges) == 0 {
 		return
 	}
-	//перемешиваем ребра
-	rand.Shuffle(len(p.edges), func(i, j int) { p.edges[i], p.edges[j] = p.edges[j], p.edges[i]})
 
-	for i := 0; i < extraConnections && i < len(p.edges); i++ {
-		randomEdge := p.edges[i]
-		if !p.dsu.Connected(randomEdge.U, randomEdge.V) && !hasCorridorBetween(p.level, p.level.Rooms[randomEdge.U], p.level.Rooms[randomEdge.V]){
-			p.dsu.Union(randomEdge.U, randomEdge.V)
-			connectTwoRooms(p.level, p.level.Rooms[randomEdge.U], p.level.Rooms[randomEdge.V])
+	rand.Shuffle(len(p.edges), func(i, j int) { p.edges[i], p.edges[j] = p.edges[j], p.edges[i] })
+
+	added := 0
+
+	for _, e := range p.edges {
+		if hasCorridorBetween(p.level, e.U, e.V) {
+			continue
+		}
+		connectTwoRooms(p.level, p.ctx, e.U, e.V)
+		added++
+		if added >= extraConnections {
+			break
 		}
 	}
 }
-
-
 
 func connectRoomsWithCorridors(level *entity.Level) {
 	if len(level.Rooms) <= 1 {
 		return
 	}
+
 	planner := NewCorridorPlaner(level)
 	planner.BuildMST()
 	planner.EnsureConnectivity()
 }
 
-
-
-
 func distanceBetweenRooms(room1, room2 *entity.Room) float64 {
-    x1 := room1.X + room1.Width/2
-    y1 := room1.Y + room1.Height/2
-    x2 := room2.X + room2.Width/2
-    y2 := room2.Y + room2.Height/2
-    dx := float64(x1 - x2)
-    dy := float64(y1 - y2)
-    return math.Sqrt(dx*dx + dy*dy)
+	x1 := room1.X + room1.Width/2
+	y1 := room1.Y + room1.Height/2
+	x2 := room2.X + room2.Width/2
+	y2 := room2.Y + room2.Height/2
+	dx := float64(x1 - x2)
+	dy := float64(y1 - y2)
+	return math.Sqrt(dx*dx + dy*dy)
 }
 
-func connectTwoRooms(level *entity.Level, room1, room2 *entity.Room) {
-    x1 := room1.X + room1.Width/2
-    y1 := room1.Y + room1.Height/2
-    x2 := room2.X + room2.Width/2
-    y2 := room2.Y + room2.Height/2
+func connectTwoRooms(level *entity.Level, ctx *CorridorContext, u, v int) {
+	room1 := level.Rooms[u]
+	room2 := level.Rooms[v]
 
-    // Проверяем, есть ли уже коридор между этими комнатами
-    if hasCorridorBetween(level, room1, room2) {
-        return
-    }
+	if hasCorridorBetween(level, u, v) {
+		return
+	}
 
-    // Выбираем только один тип соединения вместо двух
-    if rand.Intn(2) == 0 {
-        createHorizontalCorridor(level, x1, y1, x2)
-        createVerticalCorridor(level, x2, y1, y2)
-    } else {
-        createVerticalCorridor(level, x1, y1, y2)
-        createHorizontalCorridor(level, x1, y2, x2)
-    }
+	dx := (room2.X + room2.Width/2) - (room1.X + room1.Width/2)
+	dy := (room2.Y + room2.Height/2) - (room1.Y + room1.Height/2)
 
-    // Добавляем коридор в список
-    corridor := &entity.Corridor{
-        Start: entity.Position{X: x1, Y: y1},
-        End:   entity.Position{X: x2, Y: y2},
-    }
-    level.Corridors = append(level.Corridors, corridor)
+	var x1, y1, x2, y2 int
+	var ok1, ok2 bool
+
+	if utils.Abs(dx) > utils.Abs(dy) {
+		if dx > 0 {
+			x1, y1, ok1 = ctx.randomExit(room1, "right")
+			x2, y2, ok2 = ctx.randomExit(room2, "left")
+		} else {
+			x1, y1, ok1 = ctx.randomExit(room1, "left")
+			x2, y2, ok2 = ctx.randomExit(room2, "right")
+		}
+	} else {
+		if dy > 0 {
+			x1, y1, ok1 = ctx.randomExit(room1, "bottom")
+			x2, y2, ok2 = ctx.randomExit(room2, "top")
+		} else {
+			x1, y1, ok1 = ctx.randomExit(room1, "top")
+			x2, y2, ok2 = ctx.randomExit(room2, "bottom")
+		}
+	}
+
+	if !ok1 || !ok2 {
+		return
+	}
+
+	if rand.Intn(2) == 0 {
+		createHorizontalCorridor(level, x1, y1, x2)
+		createVerticalCorridor(level, x2, y1, y2)
+	} else {
+		createVerticalCorridor(level, x1, y1, y2)
+		createHorizontalCorridor(level, x1, y2, x2)
+	}
+
+	corridor := &entity.Corridor{
+		Start: entity.Position{X: x1, Y: y1},
+		End:   entity.Position{X: x2, Y: y2},
+		U:     u,
+		V:     v,
+		Width: 1,
+	}
+	level.Corridors = append(level.Corridors, corridor)
 }
 
-///func determineDirection - ДЛЯ определнеия направления при новой логике корридоров. 1.определить напрвление корридораю 2.определить точки выхода корриодрора на стене - не угловые и рандомно.3 корриодоры не г образные а Z образные - логика наиз стен выходят паралеьной направлению комныты и соденится перпендиклярной линий в центре растояний конмат  тогда избегаем примыканий к комнатам и не нарушается фигура комнаты всегда один выход. плюсом для генерации дверей можно сохранится точки выхода корридоров
-
-// Добавить функцию проверки существующего коридора
-func hasCorridorBetween(level *entity.Level, room1, room2 *entity.Room) bool {
-    for _, corridor := range level.Corridors {
-        room1Center := entity.Position{
-            X: room1.X + room1.Width/2,
-            Y: room1.Y + room1.Height/2,
-        }
-        room2Center := entity.Position{
-            X: room2.X + room2.Width/2,
-            Y: room2.Y + room2.Height/2,
-        }
-        
-        if (corridor.Start == room1Center && corridor.End == room2Center) ||
-           (corridor.Start == room2Center && corridor.End == room1Center) {
-            return true
-        }
-    }
-    return false
+// Добавить функцию проверки существующего коридора -СДЕЛАНО
+func hasCorridorBetween(level *entity.Level, u, v int) bool {
+	for _, corridor := range level.Corridors {
+		if (corridor.U == u && corridor.V == v) || (corridor.U == v && corridor.V == u) {
+			return true
+		}
+	}
+	return false
 }
-
 func createHorizontalCorridor(level *entity.Level, x1, y1, x2 int) {
-    start, end := x1, x2
-    if start > end {
-        start, end = end, start
-    }
-    
-    // Создаем коридор шириной 1 клетка
-    for x := start; x <= end; x++ {
-        if x >= 0 && x < len(level.Grid) && y1 >= 0 && y1 < len(level.Grid[0]) {
-            if !isInRoom(level, x, y1) {
-                level.Grid[x][y1].IsWall = false
-                level.Grid[x][y1].IsCorridor = true
-            }
-        }
-    }
+	start, end := x1, x2
+	if start > end {
+		start, end = end, start
+	}
+	for x := start; x <= end; x++ {
+		if x >= 0 && x < len(level.Grid) && y1 >= 0 && y1 < len(level.Grid[0]) {
+			if !isInRoom(level, x, y1) {
+				level.Grid[x][y1].IsWall = false
+				level.Grid[x][y1].IsCorridor = true
+			}
+		}
+	}
 }
 
 func createVerticalCorridor(level *entity.Level, x1, y1, y2 int) {
-    start, end := y1, y2
-    if start > end {
-        start, end = end, start
-    }
-    
-    // Создаем коридор шириной 1 клетка
-    for y := start; y <= end; y++ {
-        if x1 >= 0 && x1 < len(level.Grid) && y >= 0 && y < len(level.Grid[0]) {
-            if !isInRoom(level, x1, y) {
-                level.Grid[x1][y].IsWall = false
-                level.Grid[x1][y].IsCorridor = true
-            }
-        }
-    }
+	start, end := y1, y2
+	if start > end {
+		start, end = end, start
+	}
+
+	for y := start; y <= end; y++ {
+		if x1 >= 0 && x1 < len(level.Grid) && y >= 0 && y < len(level.Grid[0]) {
+			if !isInRoom(level, x1, y) {
+				level.Grid[x1][y].IsWall = false
+				level.Grid[x1][y].IsCorridor = true
+			}
+		}
+	}
 }
 
 // isInRoom проверяет, находится ли позиция внутри любой комнаты
 func isInRoom(level *entity.Level, x, y int) bool {
-    for _, room := range level.Rooms {
-        if x >= room.X && x < room.X+room.Width &&
-           y >= room.Y && y < room.Y+room.Height {
-            return true
-        }
-    }
-    return false
+	for _, room := range level.Rooms {
+		if x >= room.X && x < room.X+room.Width &&
+			y >= room.Y && y < room.Y+room.Height {
+			return true
+		}
+	}
+	return false
 }
-

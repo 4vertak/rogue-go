@@ -119,6 +119,7 @@ type Room struct {
 type Corridor struct {
 	Start, End Position
 	Width      int
+	U, V       int // индексы соединённых комнат - все это ради того чтобы рандомнй дополнительный путь отрисовтаь))
 }
 
 type Edge struct {
