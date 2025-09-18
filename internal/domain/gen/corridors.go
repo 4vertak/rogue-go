@@ -11,81 +11,119 @@ import (
 
 
 
-func connectRoomsWithCorridors(level *entity.Level) {
-	if len(level.Rooms) <= 1 {
-		return
+
+// теперь пороб
+
+
+//структура для  нахождания компонентов свзяности и для построения MST
+
+//DSU представляет собой набор корневых деревьев (лес). 
+//Каждое дерево соответствует определённому множеству. 
+//При реализации DSU необходимо лишь подниматься вверх по деревьям,
+// поэтому достаточно хранить для каждой вершины только номер её прямого предка.
+
+
+type DSU struct {
+	parent []int
+}
+
+//Для описания множества используется номер вершины, являющейся корнем соответствующего дерева.
+
+func NewDSU(n int) *DSU {
+	p := make([]int, n)
+
+	for i := range p {
+		p[i] = i
 	}
+	return &DSU{parent: p}
+}
 
-	var edges []entity.Edge
-	roomMap := make(map[string]int)
 
-	// ключ = GridX, GridY (их нужно хранить в entity.Room)
-	for i, room := range level.Rooms {
-		key := fmt.Sprintf("%d,%d", room.GridX, room.GridY)
-		roomMap[key] = i
+//Поэтому для определения, принадлежат ли два элемента к одному и тому же множеству, 
+//для каждого элемента нужно найти корень соответствующего дерева (поднимаясь вверх пока это возможно) и сравнить эти корни.
+func (d *DSU) Connected(x, y int) bool {
+	return d.Find(x) == d.Find(y)
+}
+
+func (d *DSU) Find(x int) int {
+	if d.parent[x] != x {
+		d.parent[x] = d.Find(d.parent[x])
 	}
+	return d.parent[x]
+}
 
-	for i, room := range level.Rooms {
-		rightKey := fmt.Sprintf("%d,%d", room.GridX+1, room.GridY)
-		if j, exists := roomMap[rightKey]; exists {
-			weight := distanceBetweenRooms(room, level.Rooms[j])
-			edges = append(edges, entity.Edge{U: i, V: j, Weight: weight})
-		}
-		downKey := fmt.Sprintf("%d,%d", room.GridX, room.GridY+1)
-		if j, exists := roomMap[downKey]; exists {
-			weight := distanceBetweenRooms(room, level.Rooms[j])
-			edges = append(edges, entity.Edge{U: i, V: j, Weight: weight})
-		}
-	}
 
+//Объединяет два множества, к которым принадлежат элементы x и y, в одно новое множество.
+func (d *DSU) Union(x, y int){
+	d.parent[d.Find(x)] = d.Find(y)
+} 
+
+
+//MST, алгоритм Крускала - берет список ребр и возвращает те что попали в остов
+func buildMST(edges []entity.Edge, n int) []entity.Edge {
+
+	//сортируем ребра по весу
 	sort.Slice(edges, func(i, j int) bool {
 		return edges[i].Weight < edges[j].Weight
 	})
 
-	parent := make([]int, len(level.Rooms))
-	for i := range parent {
-		parent[i] = i
-	}
+	//DSU используется для отслеживания уже объединенных компонент графа.
+	dsu := NewDSU(n)
 
-	var find func(int) int
-	find = func(x int) int {
-		if parent[x] != x {
-			parent[x] = find(parent[x])
+	var mst []entity.Edge
+
+	for _, edge := range edges {
+		//DSU Oпределяет, принадлежат ли концы этого ребра к уже существующим компонентам, 
+		//и если нет, то добавляет ребро и объединяет компоненты.
+		if !dsu.Connected(edge.U, edge.U) {
+			dsu.Union(edge.U, edge.V)
+			mst = append(mst, edge)
 		}
-		return parent[x]
-	}
-	union := func(x, y int) {
-		parent[find(x)] = find(y)
 	}
 
-    // В цикле MST добавляем проверку
-    for _, edge := range edges {
-        if find(edge.U) != find(edge.V) {
-            // Проверяем, что комнаты еще не соединены
-            room1 := level.Rooms[edge.U]  // Это *entity.Room
-            room2 := level.Rooms[edge.V]  // Это *entity.Room
-            
-            if !hasCorridorBetween(level, room1, room2) {
-                union(edge.U, edge.V)
-                connectTwoRooms(level, room1, room2)  // Теперь передаем *entity.Room
-            }
-        }
-    }
+	return mst
+}
 
-	// Проверка связности
+//строим ребра 
+func buildEdges(rooms []*entity.Room) []entity.Edge {
+	roomMap := make(map[string]int)
+
+	for i, room := range rooms {
+		key := fmt.Sprintf("%d,%d", room.GridX, room.GridY)
+		roomMap[key] = i
+	}
+	var edges []entity.Edge
+
+	for i, room := range rooms {
+		//если справа сосед
+		if j, ok := roomMap[fmt.Sprintf("%d,%d", room.GridX+1, room.GridY)]; ok {
+			edges = append(edges, entity.Edge{U: i, V: j, Weight: distanceBetweenRooms(room, rooms[j])})
+		}
+		// елси сосед снизу
+		if j, exists := roomMap[fmt.Sprintf("%d,%d", room.GridX, room.GridY+1)]; exists {
+			edges = append(edges, entity.Edge{U: i, V: j, Weight: distanceBetweenRooms(room, rooms[j])})
+		}
+	}
+
+	return edges
+}
+
+func ensuringConnectivity(level *entity.Level, dsu *DSU){
 	for {
 		comps := make(map[int][]int)
 		for i := range level.Rooms {
-			root := find(i)
+			root := dsu.Find(i)
 			comps[root] = append(comps[root], i)
 		}
 		if len(comps) <= 1 {
 			break
 		}
-
+		
+		//соединяем два компонента  ближайшей парой
 		var bestEdge *entity.Edge
 		bestDist := math.MaxFloat64
-		var roots []int
+		
+		roots := make([]int, 0, len(comps))
 		for k := range comps {
 			roots = append(roots, k)
 		}
@@ -101,22 +139,50 @@ func connectRoomsWithCorridors(level *entity.Level) {
 		}
 
 		if bestEdge != nil {
-			union(bestEdge.U, bestEdge.V)
-			// mstEdges = append(mstEdges, *bestEdge)
+			dsu.Union(bestEdge.U, bestEdge.V)
 			connectTwoRooms(level, level.Rooms[bestEdge.U], level.Rooms[bestEdge.V])
 		}
 	}
 
-	// Несколько дополнительных соединений
+}
+
+
+
+func connectRoomsWithCorridors(level *entity.Level) {
+	if len(level.Rooms) <= 1 {
+		return
+	}
+
+	edges := buildEdges(level.Rooms)
+	mstEdges := buildMST(edges, len(level.Rooms))
+	dsu := NewDSU(len(level.Rooms))
+
+
+   	 // В строим MST
+   	 for _, edge := range mstEdges {
+            if !hasCorridorBetween(level, level.Rooms[edge.U], level.Rooms[edge.V]) {
+                dsu.Union(edge.U, edge.V)
+                connectTwoRooms(level, level.Rooms[edge.U], level.Rooms[edge.V])
+            }
+        }
+
+
+	// Обспечиваем связность - елис нет связи то соединяем комнаты
+	ensuringConnectivity(level, dsu)
+
+	// рандомно доп корридоры
 	extraConnections := int(math.Sqrt(float64(len(level.Rooms))))
 	for i := 0; i < extraConnections && i < len(edges); i++ {
 		randomEdge := edges[rand.Intn(len(edges))]
-		if find(randomEdge.U) != find(randomEdge.V) {
-			union(randomEdge.U, randomEdge.V)
+		if !dsu.Connected(randomEdge.U, randomEdge.V) {
+			dsu.Union(randomEdge.U, randomEdge.V)
 			connectTwoRooms(level, level.Rooms[randomEdge.U], level.Rooms[randomEdge.V])
 		}
 	}
 }
+
+
+
 
 func distanceBetweenRooms(room1, room2 *entity.Room) float64 {
     x1 := room1.X + room1.Width/2
