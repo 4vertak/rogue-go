@@ -95,15 +95,15 @@ func GetItemSymbol(item *entity.Item) string {
 func GetItemColor(item *entity.Item) int16 {
 	switch item.Type {
 	case entity.Weapon:
-		return 4
+		return 7
 	case entity.Food:
-		return 2
+		return 14
 	case entity.Potion:
-		return 5
+		return 8
 	case entity.Scroll:
-		return 3
+		return 14
 	case entity.Treasure:
-		return 6
+		return 13
 	default:
 		return 7
 	}
@@ -133,7 +133,7 @@ func usePotion(state *entity.GameState, index int) {
 	applyPotionEffect(state, potion)
 	state.Backpack.Potions = append(state.Backpack.Potions[:index], state.Backpack.Potions[index+1:]...)
 	state.GameSession.PotionsUsed++
-	
+
 	// Добавляем сообщение о использовании
 	switch potion.SubType {
 	case entity.HealthPotion:
@@ -146,34 +146,34 @@ func usePotion(state *entity.GameState, index int) {
 }
 
 func useScroll(state *entity.GameState, index int) {
-    if index < 0 || index >= len(state.Backpack.Scrolls) {
-        state.Messages = append(state.Messages, "Invalid scroll selection")
-        return
-    }
-    scroll := state.Backpack.Scrolls[index]
+	if index < 0 || index >= len(state.Backpack.Scrolls) {
+		state.Messages = append(state.Messages, "Invalid scroll selection")
+		return
+	}
+	scroll := state.Backpack.Scrolls[index]
 
-    if scroll.SubType == entity.KeyRed || scroll.SubType == entity.KeyBlue ||
-        scroll.SubType == entity.KeyGreen || scroll.SubType == entity.KeyYellow {
-        useKey(state, scroll)
-        state.Backpack.Scrolls = append(state.Backpack.Scrolls[:index], state.Backpack.Scrolls[index+1:]...)
-        state.Messages = append(state.Messages, "Used "+keyName(scroll.SubType))
-    } else {
-        applyScrollEffect(state, scroll)
-        state.Backpack.Scrolls = append(state.Backpack.Scrolls[:index], state.Backpack.Scrolls[index+1:]...)
-        state.GameSession.ScrollsUsed++
-        
-        // Добавляем сообщение о использовании с правильным названием
-        switch scroll.SubType {
-        case entity.MaxHealthScroll:
-            state.Messages = append(state.Messages, "Used Max Health Scroll: +"+strconv.Itoa(scroll.MaxHealthBoost)+" Max HP")
-        case entity.AgilityScroll:
-            state.Messages = append(state.Messages, "Used Agility Scroll: +"+strconv.Itoa(scroll.AgilityBoost)+" AGI")
-        case entity.StrengthScroll:
-            state.Messages = append(state.Messages, "Used Strength Scroll: +"+strconv.Itoa(scroll.StrengthBoost)+" STR")
-        default:
-            state.Messages = append(state.Messages, "Used scroll")
-        }
-    }
+	if scroll.SubType == entity.KeyRed || scroll.SubType == entity.KeyBlue ||
+		scroll.SubType == entity.KeyGreen || scroll.SubType == entity.KeyYellow {
+		useKey(state, scroll)
+		state.Backpack.Scrolls = append(state.Backpack.Scrolls[:index], state.Backpack.Scrolls[index+1:]...)
+		state.Messages = append(state.Messages, "Used "+keyName(scroll.SubType))
+	} else {
+		applyScrollEffect(state, scroll)
+		state.Backpack.Scrolls = append(state.Backpack.Scrolls[:index], state.Backpack.Scrolls[index+1:]...)
+		state.GameSession.ScrollsUsed++
+
+		// Добавляем сообщение о использовании с правильным названием
+		switch scroll.SubType {
+		case entity.MaxHealthScroll:
+			state.Messages = append(state.Messages, "Used Max Health Scroll: +"+strconv.Itoa(scroll.MaxHealthBoost)+" Max HP")
+		case entity.AgilityScroll:
+			state.Messages = append(state.Messages, "Used Agility Scroll: +"+strconv.Itoa(scroll.AgilityBoost)+" AGI")
+		case entity.StrengthScroll:
+			state.Messages = append(state.Messages, "Used Strength Scroll: +"+strconv.Itoa(scroll.StrengthBoost)+" STR")
+		default:
+			state.Messages = append(state.Messages, "Used scroll")
+		}
+	}
 }
 
 func useWeapon(state *entity.GameState, index int) {
@@ -224,7 +224,7 @@ func applyPotionEffect(state *entity.GameState, potion *entity.Item) {
 			Description: "Health restored",
 		}
 		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
-		
+
 	case entity.AgilityPotion:
 		state.Player.Agility += potion.AgilityBoost
 		// Создаем временный эффект
@@ -235,7 +235,7 @@ func applyPotionEffect(state *entity.GameState, potion *entity.Item) {
 			Description: "Agility boosted",
 		}
 		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
-		
+
 	case entity.StrengthPotion:
 		state.Player.Strength += potion.StrengthBoost
 		// Создаем временный эффект
@@ -262,7 +262,7 @@ func applyScrollEffect(state *entity.GameState, scroll *entity.Item) {
 			Description: "Max health increased",
 		}
 		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
-		
+
 	case entity.AgilityScroll:
 		state.Player.Agility += scroll.AgilityBoost
 		// Создаем временный эффект
@@ -273,7 +273,7 @@ func applyScrollEffect(state *entity.GameState, scroll *entity.Item) {
 			Description: "Agility permanently increased",
 		}
 		state.Player.ActiveEffects = append(state.Player.ActiveEffects, effect)
-		
+
 	case entity.StrengthScroll:
 		state.Player.Strength += scroll.StrengthBoost
 		// Создаем временный эффект
@@ -332,15 +332,15 @@ func GetKeySymbol(keyType entity.ItemSubType) string {
 func GetKeyColor(keyType entity.ItemSubType) int16 {
 	switch keyType {
 	case entity.KeyRed:
-		return 1 // Красный
+		return 10 // Красный
 	case entity.KeyBlue:
-		return 4 // Синий
+		return 11 // Синий
 	case entity.KeyGreen:
-		return 2 // Зеленый
+		return 12 // Зеленый
 	case entity.KeyYellow:
-		return 3 // Желтый
+		return 13 // Желтый
 	default:
-		return 7 // Белый
+		return 14 // Белый
 	}
 }
 
@@ -382,32 +382,32 @@ func GetDoorSymbol(door *entity.Door) string {
 
 // Функция для получения символа двери (цифровая версия)
 func GetDoorSymbol(door *entity.Door) string {
-    switch door.Color {
-    case entity.KeyRed:
-        return "1" // Красная дверь
-    case entity.KeyBlue:
-        return "2" // Синяя дверь
-    case entity.KeyGreen:
-        return "3" // Зеленая дверь
-    case entity.KeyYellow:
-        return "4" // Желтая дверь
-    default:
-        return "0" // Дверь по умолчанию
-    }
+	switch door.Color {
+	case entity.KeyRed:
+		return "1" // Красная дверь
+	case entity.KeyBlue:
+		return "2" // Синяя дверь
+	case entity.KeyGreen:
+		return "3" // Зеленая дверь
+	case entity.KeyYellow:
+		return "4" // Желтая дверь
+	default:
+		return "0" // Дверь по умолчанию
+	}
 }
 
 // Функция для получения цвета двери
 func GetDoorColor(door *entity.Door) int16 {
-    switch door.Color {
-    case entity.KeyRed:
-        return 1 // Красный
-    case entity.KeyBlue:
-        return 4 // Синий
-    case entity.KeyGreen:
-        return 2 // Зеленый
-    case entity.KeyYellow:
-        return 3 // Желтый
-    default:
-        return 7 // Белый
-    }
+	switch door.Color {
+	case entity.KeyRed:
+		return 10 // Красный
+	case entity.KeyBlue:
+		return 11 // Синий
+	case entity.KeyGreen:
+		return 12 // Зеленый
+	case entity.KeyYellow:
+		return 13 // Желтый
+	default:
+		return 1 // Белый
+	}
 }

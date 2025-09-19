@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"log"
 	"math/rand"
 	"time"
 
@@ -24,6 +25,7 @@ func NewGame(storage Storage) *Game {
 }
 
 func (g *Game) InitializeNewGame() {
+	scoresStats := g.State.Statistics
 	g.State = &entity.GameState{
 		IsRunning: true,
 		Player: &entity.Character{
@@ -46,9 +48,7 @@ func (g *Game) InitializeNewGame() {
 		Enemies:     make([]*entity.Enemy, 0),
 		Items:       make([]*entity.Item, 0),
 		GameSession: &entity.GameSession{},
-		Statistics: &entity.Statistics{
-			BestScores: make([]*entity.GameSession, 0),
-		},
+		Statistics:  scoresStats,
 		Camera: &entity.Camera{
 			Width:  80,
 			Height: 24,
@@ -111,12 +111,19 @@ func (g *Game) GenerateLevel(levelNum int) {
 		r := g.State.Level.StartRoom
 		g.State.Player.Position = entity.Position{X: r.X + r.Width/2, Y: r.Y + r.Height/2}
 	}
+
 }
 
 func (g *Game) UpdateGameState() {
 	rules.UpdateVisibility(g.State)
 	rules.MoveEnemies(g.State)
-	rules.CheckAutomaticExit(g.State, func() { g.GenerateLevel(g.State.CurrentLevel + 1) })
+	rules.CheckAutomaticExit(g.State, func() {
+		g.GenerateLevel(g.State.CurrentLevel + 1)
+		// автосохраненение -при каждом достижении уровня то автосейв
+		if err := g.SaveGame("last_session.json"); err != nil {
+			log.Println("Error autosave:", err)
+		}
+	})
 	rules.CheckExitProximity(g.State)
 	rules.AdjustDifficulty(g.State)
 	rules.UpdateEffects(g.State)
@@ -178,17 +185,17 @@ func (g *Game) GetKeyName(color entity.ItemSubType) string {
 }
 
 func (g *Game) GetDoorSymbol(door *entity.Door) string {
-    return rules.GetDoorSymbol(door)
+	return rules.GetDoorSymbol(door)
 }
 
 func (g *Game) GetDoorColor(door *entity.Door) int16 {
-    return rules.GetDoorColor(door)
+	return rules.GetDoorColor(door)
 }
 
 func (g *Game) InteractWithNearest() {
-    rules.InteractWithNearest(g.State)
+	rules.InteractWithNearest(g.State)
 }
 
 func (g *Game) GetNearestInteractable() (interface{}, float64) {
-    return rules.GetNearestInteractable(g.State)
+	return rules.GetNearestInteractable(g.State)
 }

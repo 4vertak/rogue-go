@@ -19,5 +19,5 @@ func main() {
 	// Загрузка статистики
 	_ = game.LoadStats("statistics.json")
 
-	presentation.ShowMainMenu(ui, game)
+	ui.ShowMainMenu()
 }

@@ -71,34 +71,51 @@ func NewCorridorContext() *CorridorContext {
 }
 
 // Локальная версия randomExit
-func (ctx *CorridorContext) randomExit(room *entity.Room, side string) (int, int, bool) {
+func (ctx *CorridorContext) randomExit(room *entity.Room, preferredSide string) (int, int, bool) {
 	// Проверка — есть ли уже выход на этой стороне
-	for _, e := range ctx.exits[room] {
-		if e.Side == side {
-			return 0, 0, false
+	sides := []string{"left", "right", "top", "bottom"}
+
+	for i, side := range sides {
+		if side == preferredSide {
+			sides[0], sides[i] = sides[i], sides[0]
+			break
 		}
 	}
 
-	var x, y int
-	switch side {
-	case "left":
-		x = room.X
-		y = rand.Intn(room.Height-2) + room.Y + 1
-	case "right":
-		x = room.X + room.Width - 1
-		y = rand.Intn(room.Height-2) + room.Y + 1
-	case "top":
-		y = room.Y
-		x = rand.Intn(room.Width-2) + room.X + 1
-	case "bottom":
-		y = room.Y + room.Height - 1
-		x = rand.Intn(room.Width-2) + room.X + 1
+	for _, side := range sides {
+		already := false
+		for _, e := range ctx.exits[room] {
+			if e.Side == side {
+				already = true
+				break
+			}
+		}
+		if already {
+			continue
+		}
+
+		var x, y int
+		switch side {
+		case "left":
+			x = room.X
+			y = rand.Intn(room.Height-2) + room.Y + 1
+		case "right":
+			x = room.X + room.Width - 1
+			y = rand.Intn(room.Height-2) + room.Y + 1
+		case "top":
+			y = room.Y
+			x = rand.Intn(room.Width-2) + room.X + 1
+		case "bottom":
+			y = room.Y + room.Height - 1
+			x = rand.Intn(room.Width-2) + room.X + 1
+		}
+
+		exit := Exit{X: x, Y: y, Side: side}
+		ctx.exits[room] = append(ctx.exits[room], exit)
+		return x, y, true
 	}
 
-	exit := Exit{X: x, Y: y, Side: side}
-	ctx.exits[room] = append(ctx.exits[room], exit)
-
-	return x, y, true
+	return 0, 0, false
 }
 
 // будет планировщиком соединений
@@ -183,36 +200,40 @@ func (p *CorridorPlaner) EnsureConnectivity() {
 	for {
 		comps := make(map[int][]int)
 		for i := range p.level.Rooms {
-			comps[p.dsu.Find(i)] = append(comps[p.dsu.Find(i)], i)
+			root := p.dsu.Find(i)
+			comps[root] = append(comps[root], i)
 		}
+
 		if len(comps) <= 1 {
 			break
 		}
-
-		var bestEdge *entity.Edge
-		bestDist := math.MaxFloat64
 
 		roots := make([]int, 0, len(comps))
 		for k := range comps {
 			roots = append(roots, k)
 		}
 
-		for _, a := range comps[roots[0]] {
-			for _, b := range comps[roots[1]] {
-				dist := distanceBetweenRooms(p.level.Rooms[a], p.level.Rooms[b])
-				if dist < bestDist {
-					bestDist = dist
-					bestEdge = &entity.Edge{U: a, V: b, Weight: dist}
+		for i := 0; i < len(roots)-1; i++ {
+			compA := comps[roots[i]]
+			bestDist := math.MaxFloat64
+			var bestU, bestV int
+
+			for _, u := range compA {
+				for _, v := range comps[roots[i+1]] {
+					dist := distanceBetweenRooms(p.level.Rooms[u], p.level.Rooms[v])
+					if dist < bestDist {
+						bestDist = dist
+						bestU, bestV = u, v
+					}
 				}
 			}
-		}
 
-		if bestEdge != nil {
-			p.dsu.Union(bestEdge.U, bestEdge.V)
-			connectTwoRooms(p.level, p.ctx, bestEdge.U, bestEdge.V)
+			if !p.dsu.Connected(bestU, bestV) {
+				p.dsu.Union(bestU, bestV)
+				connectTwoRooms(p.level, p.ctx, bestU, bestV)
+			}
 		}
 	}
-
 }
 
 // сдучайые доплнительные корриодоры

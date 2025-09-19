@@ -1,21 +1,50 @@
 package presentation
 
 import (
+	"fmt"
 	"math"
 	"rogue-go/internal/domain/entity"
 	"strconv"
-	"fmt"
 
 	"github.com/rthornton128/goncurses"
+)
+
+const (
+	// --- стены и пол ---
+	ColorWallNear = 1
+	ColorWallMid  = 2
+	ColorWallFar  = 3
+	ColorFloor    = 4
+	ColorCeiling  = 5
+
+	// --- игрок ---
+	ColorPlayer = 6
+
+	// --- предметы ---
+	ColorWeapon    = 7
+	ColorPotion    = 8
+	ColorMimic     = 9
+	ColorKeyRed    = 10
+	ColorKeyBlue   = 11
+	ColorKeyGreen  = 12
+	ColorKeyYellow = 13
+	ColorDefault   = 14
+
+	// --- монстры ---
+	ColorZombie    = 20
+	ColorVampire   = 21
+	ColorGhost     = 22
+	ColorOgre      = 23
+	ColorSnakeMage = 24
 )
 
 func (gi *GameInterface) createWindows() {
 	rows, cols := gi.stdscr.MaxYX()
 
 	// Главное игровое окно (центр экрана)
-	gameRows := rows - 6  // Оставляем место для HUD в 3D режиме
+	gameRows := rows - 6 // Оставляем место для HUD в 3D режиме
 	gameCols := cols - 31
-	
+
 	if gameRows < 10 {
 		gameRows = 10
 	}
@@ -76,11 +105,10 @@ func (gi *GameInterface) renderMap() {
 	gi.gameWindow.Erase()
 	gi.gameWindow.Box(0, 0)
 
-	state := gi.game.State
-	player := state.Player
-	camera := state.Camera
+	player := gi.game.State.Player
+	camera := gi.game.State.Camera
 
-	if camera == nil || state.Level == nil {
+	if camera == nil || gi.game.State.Level == nil {
 		return
 	}
 
@@ -98,11 +126,11 @@ func (gi *GameInterface) renderMap() {
 		camera.Y = 0
 	}
 
-	mapWidth := len(state.Level.Grid)
+	mapWidth := len(gi.game.State.Level.Grid)
 	if mapWidth == 0 {
 		return
 	}
-	mapHeight := len(state.Level.Grid[0])
+	mapHeight := len(gi.game.State.Level.Grid[0])
 
 	if camera.X+usableWidth > mapWidth {
 		camera.X = mapWidth - usableWidth
@@ -124,8 +152,8 @@ func (gi *GameInterface) renderMap() {
 		camera.Y = mapHeight - usableHeight
 	}
 
-	for x := camera.X; x < camera.X+usableWidth && x < len(state.Level.Grid); x++ {
-		for y := camera.Y; y < camera.Y+usableHeight && y < len(state.Level.Grid[0]); y++ {
+	for x := camera.X; x < camera.X+usableWidth && x < len(gi.game.State.Level.Grid); x++ {
+		for y := camera.Y; y < camera.Y+usableHeight && y < len(gi.game.State.Level.Grid[0]); y++ {
 			screenX := x - camera.X + 1
 			screenY := y - camera.Y + 1
 
@@ -134,23 +162,24 @@ func (gi *GameInterface) renderMap() {
 				continue
 			}
 
-			if state.Level.Visible[x][y] {
-				cell := state.Level.Grid[x][y]
+			if gi.game.State.Level.Visible[x][y] {
+				cell := gi.game.State.Level.Grid[x][y]
 				var ch string
 				var color int16 = 0
 
 				if cell.IsWall {
 					ch = "#"
-					color = 1
+					color = ColorWallNear
 				} else if cell.IsCorridor {
 					ch = "."
-					color = 2
+					color = ColorFloor
 				} else {
 					ch = " "
+					color = ColorCeiling // черныйй
 				}
 
 				// Проверка предметов
-				for _, item := range state.Items {
+				for _, item := range gi.game.State.Items {
 					if item.Position.X == x && item.Position.Y == y {
 						// ОСОБАЯ ОБРАБОТКА ДЛЯ КЛЮЧЕЙ
 						if item.Type == entity.Scroll && (item.SubType == entity.KeyRed || item.SubType == entity.KeyBlue ||
@@ -165,7 +194,7 @@ func (gi *GameInterface) renderMap() {
 				}
 
 				// Проверка врагов
-				for _, enemy := range state.Enemies {
+				for _, enemy := range gi.game.State.Enemies {
 					if enemy.Position.X == x && enemy.Position.Y == y && enemy.IsVisible {
 						ch = gi.game.GetEnemySymbol(enemy)
 						color = gi.game.GetEnemyColor(enemy)
@@ -174,28 +203,28 @@ func (gi *GameInterface) renderMap() {
 				}
 
 				// Проверка игрока
-				if state.Player.Position.X == x &&
-					state.Player.Position.Y == y {
+				if gi.game.State.Player.Position.X == x &&
+					gi.game.State.Player.Position.Y == y {
 					ch = "@"
 					color = 6
 				}
 
 				// Проверка выхода
-				if state.Level.ExitRoom != nil {
-					exitX := state.Level.ExitRoom.X + state.Level.ExitRoom.Width/2
-					exitY := state.Level.ExitRoom.Y + state.Level.ExitRoom.Height/2
-					if x == exitX && y == exitY && state.Level.Visible[x][y] {
+				if gi.game.State.Level.ExitRoom != nil {
+					exitX := gi.game.State.Level.ExitRoom.X + gi.game.State.Level.ExitRoom.Width/2
+					exitY := gi.game.State.Level.ExitRoom.Y + gi.game.State.Level.ExitRoom.Height/2
+					if x == exitX && y == exitY && gi.game.State.Level.Visible[x][y] {
 						ch = ">"
 						color = 3
 					}
 				}
 
 				// Проверка дверей
-				for _, door := range state.Level.Doors {
+				for _, door := range gi.game.State.Level.Doors {
 					if door.Position.X == x && door.Position.Y == y {
-						if state.Level.Visible[x][y] {
-							ch = gi.game.GetDoorSymbol(door) // Используем символ двери
-							color = gi.game.GetDoorColor(door) // Используем цвет двери
+						if gi.game.State.Level.Visible[x][y] {
+							ch = gi.game.GetDoorSymbol(door)
+							color = gi.game.GetDoorColor(door)
 						}
 						break
 					}
@@ -208,8 +237,8 @@ func (gi *GameInterface) renderMap() {
 				if color > 0 {
 					gi.gameWindow.ColorOff(color)
 				}
-			} else if state.Level.Discovered[x][y].IsWall || state.Level.Discovered[x][y].IsCorridor {
-				cell := state.Level.Grid[x][y]
+			} else if gi.game.State.Level.Discovered[x][y].IsWall || gi.game.State.Level.Discovered[x][y].IsCorridor {
+				cell := gi.game.State.Level.Grid[x][y]
 				var ch string
 				var color int16 = 0
 
@@ -236,13 +265,12 @@ func (gi *GameInterface) renderMap() {
 }
 
 func (gi *GameInterface) render3D() {
-	state := gi.game.State
 	gi.gameWindow.Erase()
 
-    player := state.Player
-    level := state.Level
-    maxY, maxX := gi.gameWindow.MaxYX()
-    width, height := maxX-2, maxY-2
+	player := gi.game.State.Player
+	level := gi.game.State.Level
+	maxY, maxX := gi.gameWindow.MaxYX()
+	width, height := maxX-2, maxY-2
 
 	// Максимальное расстояние видимости
 	maxViewDistance := 15.0
@@ -251,8 +279,8 @@ func (gi *GameInterface) render3D() {
 	for x := 0; x < width; x++ {
 		// Вычисляем положение луча
 		cameraX := 2*float64(x)/float64(width) - 1
-		rayDirX := state.PlayerDir.X + state.PlayerPlane.X*cameraX
-		rayDirY := state.PlayerDir.Y + state.PlayerPlane.Y*cameraX
+		rayDirX := gi.game.State.PlayerDir.X + gi.game.State.PlayerPlane.X*cameraX
+		rayDirY := gi.game.State.PlayerDir.Y + gi.game.State.PlayerPlane.Y*cameraX
 
 		// Позиция игрока на карте
 		posX := float64(player.Position.X) + 0.5
@@ -353,7 +381,7 @@ func (gi *GameInterface) render3D() {
 		textureSymbol := gi.getWallTexture(mapX, mapY)
 
 		// Применяем градиент based on distance
-		wallColor := gi.getDistanceColor(perpWallDist, maxViewDistance)
+		wallColor := gi.getDistanceColor(perpWallDist, maxViewDistance, 0)
 
 		// Для боковых стен делаем темнее
 		if side == 1 {
@@ -383,16 +411,16 @@ func (gi *GameInterface) render3D() {
 		}
 	}
 
-    // Рендерим объекты ПОСЛЕ стен
-    gi.renderObjects3D()
+	// Рендерим объекты ПОСЛЕ стен
+	gi.renderObjects3D()
 
-    // Рендерим мини-карту ПОСЛЕ всего
-    if gi.showMinimap {
-        gi.renderMinimap()
-    }
+	// Рендерим мини-карту ПОСЛЕ всего
+	if gi.showMinimap {
+		gi.renderMinimap()
+	}
 
-    // Рендерим двери
-    gi.renderDoors3D()
+	// Рендерим двери
+	gi.renderDoors3D()
 
 	// Рендерим HUD поверх 3D сцены
 	gi.render3DHUD()
@@ -438,36 +466,50 @@ func (gi *GameInterface) getWallTexture(mapX, mapY int) string {
 }
 
 // Функция для получения градиентного цвета на основе расстояния
-func (gi *GameInterface) getDistanceColor(distance float64, maxDistance float64) int16 {
-	if distance < maxDistance/3 {
-		return 24 // Яркий цвет для близких стен
-	} else if distance < maxDistance*2/3 {
-		return 25 // Средний цвет
-	} else {
-		return 26 // Темный цвет для далеких стен
+func (gi *GameInterface) getDistanceColor(distance float64, maxDistance float64, side int) int16 {
+	var base int16
+	switch {
+	case distance < maxDistance/3:
+		base = ColorWallNear
+	case distance < maxDistance*2/3:
+		base = ColorWallMid
+	default:
+		base = ColorWallFar
 	}
-}
-
-func getWallColor(cell entity.Cell, side int) int16 {
-	// Разные цвета для разных сторон
+	// затемнение боковых стен
 	if side == 1 {
-		// Темнее для y-сторон
-		switch {
-		case cell.IsCorridor:
-			return 3 // Темно-желтый
-		default:
-			return 11 // Темно-синий
+		switch base {
+		case ColorWallNear:
+			return ColorWallNear
+		case ColorWallMid:
+			return ColorWallMid
+		case ColorWallFar:
+			return ColorWallFar
 		}
 	}
-
-	// Обычные цвета для x-сторон
-	switch {
-	case cell.IsCorridor:
-		return 2 // Желтый
-	default:
-		return 4 // Синий
-	}
+	return base
 }
+
+// func getWallColor(cell entity.Cell, side int) int16 {
+// 	// Разные цвета для разных сторон
+// 	if side == 1 {
+// 		// Темнее для y-сторон
+// 		switch {
+// 		case cell.IsCorridor:
+// 			return 3 // Темно-желтый
+// 		default:
+// 			return 11 // Темно-синий
+// 		}
+// 	}
+
+// 	// Обычные цвета для x-сторон
+// 	switch {
+// 	case cell.IsCorridor:
+// 		return 2 // Желтый
+// 	default:
+// 		return 4 // Синий
+// 	}
+// }
 
 func (gi *GameInterface) renderMinimap() {
 	state := gi.game.State
@@ -479,7 +521,7 @@ func (gi *GameInterface) renderMinimap() {
 	startY := 1 // Верхний угол
 
 	// Рисуем рамку мини-карты
-	gi.gameWindow.ColorOn(7) // Белый цвет
+	gi.gameWindow.ColorOn(ColorDefault) // Белый цвет
 
 	// Верхняя граница
 	gi.gameWindow.MovePrint(startY, startX, "+")
@@ -507,10 +549,10 @@ func (gi *GameInterface) renderMinimap() {
 
 				if cell.IsWall {
 					ch = "#"
-					color = 1 // Красный для стен
+					color = ColorWallNear
 				} else {
 					ch = "."
-					color = 2 // Зеленый для пола
+					color = ColorFloor
 				}
 
 				// Проверяем дверь
@@ -543,12 +585,12 @@ func (gi *GameInterface) renderMinimap() {
 				// Игрок в центре мини-карты
 				if x-1 == mapSize/2 && y-1 == mapSize/2 {
 					ch = "@"
-					color = 6 // Голубой для игрока
+					color = ColorPlayer
 				}
 			} else {
 				// За пределами карты
 				ch = " "
-				color = 8
+				color = ColorCeiling //черный как потолок
 			}
 
 			if color > 0 {
@@ -575,65 +617,86 @@ func (gi *GameInterface) renderMinimap() {
 
 // Добавим функцию для рендеринга дверей в 3D
 func (gi *GameInterface) renderDoors3D() {
-    state := gi.game.State
-    maxY, maxX := gi.gameWindow.MaxYX()
-    screenWidth := maxX - 2
-    screenHeight := maxY - 2
+	state := gi.game.State
+	maxY, maxX := gi.gameWindow.MaxYX()
+	screenWidth := maxX - 2
+	screenHeight := maxY - 2
 
-    for _, door := range state.Level.Doors {
-        if !state.Level.Visible[door.Position.X][door.Position.Y] {
-            continue
-        }
+	for _, door := range state.Level.Doors {
+		if !state.Level.Visible[door.Position.X][door.Position.Y] {
+			continue
+		}
 
-        // Вычисляем позицию двери относительно игрока
-        relX := float64(door.Position.X) - float64(state.Player.Position.X) + 0.5
-        relY := float64(door.Position.Y) - float64(state.Player.Position.Y) + 0.5
+		// Вычисляем позицию двери относительно игрока
+		relX := float64(door.Position.X) - float64(state.Player.Position.X) + 0.5
+		relY := float64(door.Position.Y) - float64(state.Player.Position.Y) + 0.5
 
-        // Преобразуем в экранные координаты
-        transformX := relY*state.PlayerDir.X - relX*state.PlayerDir.Y
-        transformY := relY*state.PlayerDir.Y + relX*state.PlayerDir.X
+		// Преобразуем в экранные координаты
+		transformX := relY*state.PlayerDir.X - relX*state.PlayerDir.Y
+		transformY := relY*state.PlayerDir.Y + relX*state.PlayerDir.X
 
-        if transformY <= 0 {
-            continue // Дверь позади игрока
-        }
+		if transformY <= 0 {
+			continue // Дверь позади игрока
+		}
 
-        // Вычисляем экранную позицию
-        screenX := int(float64(screenWidth)/2 * (1 + transformX/transformY))
-        distance := math.Sqrt(relX*relX + relY*relY)
+		// Вычисляем экранную позицию
+		screenX := int(float64(screenWidth) / 2 * (1 + transformX/transformY))
+		distance := math.Sqrt(relX*relX + relY*relY)
 
-        // Вычисляем размер двери
-        doorSize := int(float64(screenHeight) / distance)
-        if doorSize < 1 {
-            doorSize = 1
-        }
-        if doorSize > screenHeight/2 {
-            doorSize = screenHeight / 2
-        }
+		// Вычисляем размер двери
+		doorSize := int(float64(screenHeight) / distance)
+		if doorSize < 1 {
+			doorSize = 1
+		}
+		if doorSize > screenHeight/2 {
+			doorSize = screenHeight / 2
+		}
 
-        // Центрируем по вертикали
-        screenY := screenHeight/2 - doorSize/2
+		// Центрируем по вертикали
+		screenY := screenHeight/2 - doorSize/2
 
-        // Рисуем дверь, если она в поле зрения
-        if screenX >= -doorSize && screenX < screenWidth+doorSize &&
-           screenY >= -doorSize && screenY < screenHeight+doorSize {
-            
-            doorColor := gi.game.GetDoorColor(door)
-            doorSymbol := gi.game.GetDoorSymbol(door)
-            
-            if door.IsLocked {
-                doorSymbol = "X" // Заблокированная дверь
-                doorColor = 1    // Красный цвет
-            }
+		// Рисуем дверь, если она в поле зрения
+		if screenX >= -doorSize && screenX < screenWidth+doorSize &&
+			screenY >= -doorSize && screenY < screenHeight+doorSize {
 
-            gi.gameWindow.ColorOn(doorColor)
-            for y := screenY; y < screenY+doorSize && y < screenHeight; y++ {
-                if y >= 0 {
-                    gi.gameWindow.MovePrint(y+1, screenX+1, doorSymbol)
-                }
-            }
-            gi.gameWindow.ColorOff(doorColor)
-        }
-    }
+			doorColor := gi.game.GetDoorColor(door)
+			// doorSymbol := gi.game.GetDoorSymbol(door)
+
+			if !door.IsLocked {
+				// doorSymbol = "."         // разблокированная дверь
+				doorColor = ColorDefault // белый цвет
+			}
+
+			gi.gameWindow.ColorOn(doorColor)
+			bodyWidth := screenWidth / 2
+			if bodyWidth > screenWidth {
+				bodyWidth = screenWidth
+			}
+
+			distance := math.Sqrt(relX*relX + relY*relY)
+			objectSize := int(float64(screenHeight) / distance)
+			if objectSize < 1 {
+				objectSize = 1
+			}
+			if objectSize > screenHeight/2 {
+				objectSize = screenHeight / 2
+			}
+			bodyHeight := objectSize / 2
+			if bodyHeight < 1 {
+				bodyHeight = 1
+			}
+
+			for y := 1; y <= bodyHeight && screenY+y < screenHeight; y++ {
+				for x := -bodyWidth; x <= bodyWidth; x++ {
+					sx := screenX + x
+					if sx >= 0 && sx < screenWidth {
+						gi.gameWindow.MovePrint(screenY+y+4, sx+1, "█")
+					}
+				}
+			}
+			gi.gameWindow.ColorOff(doorColor)
+		}
+	}
 }
 
 func (gi *GameInterface) renderStatus() {
@@ -703,8 +766,7 @@ func (gi *GameInterface) renderEffects() {
 			if startRow >= maxY-2 {
 				break
 			}
-			
-			// Преобразуем тип эффекта в читаемое название
+
 			effectName := getEffectName(effect.Type)
 			effectText := effectName + " (" + strconv.Itoa(effect.Duration) + ")"
 			gi.statusWindow.MovePrint(startRow, 1, effectText)
@@ -777,9 +839,6 @@ func (gi *GameInterface) showGameOver() {
 
 	gi.stdscr.Print("\nPress any key to continue...")
 	gi.stdscr.Refresh()
-	gi.stdscr.Timeout(-1)
-	gi.stdscr.GetChar()
-	gi.stdscr.Timeout(100)
 }
 
 func (gi *GameInterface) showVictory() {
@@ -799,148 +858,278 @@ func (gi *GameInterface) showVictory() {
 }
 
 func (gi *GameInterface) initColors() {
-	goncurses.InitPair(1, goncurses.C_RED, goncurses.C_BLACK)     // Стены
-	goncurses.InitPair(2, goncurses.C_GREEN, goncurses.C_BLACK)   // Коридоры, еда
-	goncurses.InitPair(3, goncurses.C_YELLOW, goncurses.C_BLACK)  // Выход, свитки
-	goncurses.InitPair(4, goncurses.C_BLUE, goncurses.C_BLACK)    // Оружие
-	goncurses.InitPair(5, goncurses.C_MAGENTA, goncurses.C_BLACK) // Зелья, змей-маг
-	goncurses.InitPair(6, goncurses.C_CYAN, goncurses.C_BLACK)    // Игрок, сокровища
-	goncurses.InitPair(7, goncurses.C_WHITE, goncurses.C_BLACK)   // Призрак, по умолчанию
+	goncurses.StartColor()
 
-	// Для Mimic используем другую пару или меняем подход
-	goncurses.InitPair(13, goncurses.C_BLACK, goncurses.C_WHITE) // Mimic
+	goncurses.InitPair(1, goncurses.C_WHITE, goncurses.C_BLACK) // стены блидние
+	goncurses.InitPair(2, goncurses.C_CYAN, goncurses.C_BLACK)  // стены средние
+	goncurses.InitPair(3, goncurses.C_BLUE, goncurses.C_BLACK)  // стеныдальние
+	goncurses.InitPair(4, goncurses.C_WHITE, goncurses.C_BLACK) // пол
+	goncurses.InitPair(5, goncurses.C_BLACK, goncurses.C_BLACK) // потолок
 
-	// Цвета для 3D режима
-	goncurses.InitPair(8, goncurses.C_BLACK, goncurses.C_BLACK)  // Потолок
-	goncurses.InitPair(9, goncurses.C_WHITE, goncurses.C_BLACK)  // Пол
-	goncurses.InitPair(10, goncurses.C_RED, goncurses.C_BLACK)   // Текстура стен 1
-	goncurses.InitPair(11, goncurses.C_BLUE, goncurses.C_BLACK)  // Текстура стен 2
-	goncurses.InitPair(12, goncurses.C_GREEN, goncurses.C_BLACK) // Текстура стен 3
+	goncurses.InitPair(6, goncurses.C_BLUE, goncurses.C_BLACK)
 
-	// Изменяем инициализацию цветов для текстур
-	goncurses.InitPair(20, goncurses.C_RED, goncurses.C_BLACK)    // Кирпич
-	goncurses.InitPair(21, goncurses.C_WHITE, goncurses.C_BLACK)  // Камень (бывший GRAY)
-	goncurses.InitPair(22, goncurses.C_YELLOW, goncurses.C_BLACK) // Дерево
-	goncurses.InitPair(23, goncurses.C_CYAN, goncurses.C_BLACK)   // Мрамор (бывший WHITE)
+	goncurses.InitPair(7, goncurses.C_YELLOW, goncurses.C_BLACK)  // оружие
+	goncurses.InitPair(8, goncurses.C_CYAN, goncurses.C_BLACK)    // зелье
+	goncurses.InitPair(9, goncurses.C_WHITE, goncurses.C_BLACK)   // мимик
+	goncurses.InitPair(10, goncurses.C_RED, goncurses.C_BLACK)    // Ключ и дверь
+	goncurses.InitPair(11, goncurses.C_BLUE, goncurses.C_BLACK)   //  Ключ и дверь
+	goncurses.InitPair(12, goncurses.C_GREEN, goncurses.C_BLACK)  //  Ключ и дверь
+	goncurses.InitPair(13, goncurses.C_YELLOW, goncurses.C_BLACK) //  Ключ и дверь
+	goncurses.InitPair(14, goncurses.C_WHITE, goncurses.C_BLACK)  // деволтный белый на всякий
 
-	// Градиентные цвета для стен
-	goncurses.InitPair(24, goncurses.C_RED, goncurses.C_BLACK)     // Яркий
-	goncurses.InitPair(25, goncurses.C_MAGENTA, goncurses.C_BLACK) // Средний
-	goncurses.InitPair(26, goncurses.C_BLUE, goncurses.C_BLACK)    // Темный
+	goncurses.InitPair(20, goncurses.C_GREEN, goncurses.C_BLACK)  // Зомби
+	goncurses.InitPair(21, goncurses.C_RED, goncurses.C_BLACK)    // Вампир
+	goncurses.InitPair(22, goncurses.C_WHITE, goncurses.C_BLACK)  // Привидение
+	goncurses.InitPair(23, goncurses.C_YELLOW, goncurses.C_BLACK) // Огр
+	goncurses.InitPair(24, goncurses.C_WHITE, goncurses.C_BLACK)  // Змей
 }
 
 // Функция для рендеринга объектов (монстров и предметов)
 func (gi *GameInterface) renderObjects3D() {
-    state := gi.game.State
+	state := gi.game.State
 
-    // Рендерим врагов
-    for _, enemy := range state.Enemies {
-        if !enemy.IsVisible || !state.Level.Visible[enemy.Position.X][enemy.Position.Y] {
-            continue
-        }
-        gi.renderObject3D(enemy.Position, gi.game.GetEnemySymbol(enemy), gi.game.GetEnemyColor(enemy))
-    }
+	// Рендерим врагов
+	for _, enemy := range state.Enemies {
+		if !enemy.IsVisible || !state.Level.Visible[enemy.Position.X][enemy.Position.Y] {
+			continue
+		}
+		gi.renderObject3D(enemy.Position, gi.game.GetEnemySymbol(enemy), gi.game.GetEnemyColor(enemy))
+	}
 
-    // Рендерим предметы
-    for _, item := range state.Items {
-        if !state.Level.Visible[item.Position.X][item.Position.Y] {
-            continue
-        }
-        
-        var symbol string
-        var color int16
-        
-        // ОСОБАЯ ОБРАБОТКА ДЛЯ КЛЮЧЕЙ
-        if item.Type == entity.Scroll && (item.SubType == entity.KeyRed || item.SubType == entity.KeyBlue ||
-            item.SubType == entity.KeyGreen || item.SubType == entity.KeyYellow) {
-            symbol = gi.game.GetKeySymbol(item.SubType)
-            color = gi.game.GetKeyColor(item.SubType)
-        } else {
-            symbol = gi.game.GetItemSymbol(item)
-            color = gi.game.GetItemColor(item)
-        }
-        
-        gi.renderObject3D(item.Position, symbol, color)
-    }
+	// Рендерим предметы
+	for _, item := range state.Items {
+		if !state.Level.Visible[item.Position.X][item.Position.Y] {
+			continue
+		}
 
-    // Рендерим выход
-    if state.Level.ExitRoom != nil {
-        exitX := state.Level.ExitRoom.X + state.Level.ExitRoom.Width/2
-        exitY := state.Level.ExitRoom.Y + state.Level.ExitRoom.Height/2
-        if state.Level.Visible[exitX][exitY] {
-            gi.renderObject3D(entity.Position{X: exitX, Y: exitY}, ">", 3)
-        }
-    }
+		var symbol string
+		var color int16
+
+		// ОСОБАЯ ОБРАБОТКА ДЛЯ КЛЮЧЕЙ
+		if item.Type == entity.Scroll && (item.SubType == entity.KeyRed || item.SubType == entity.KeyBlue ||
+			item.SubType == entity.KeyGreen || item.SubType == entity.KeyYellow) {
+			symbol = gi.game.GetKeySymbol(item.SubType)
+			color = gi.game.GetKeyColor(item.SubType)
+		} else {
+			symbol = gi.game.GetItemSymbol(item)
+			color = gi.game.GetItemColor(item)
+		}
+
+		gi.renderObject3D(item.Position, symbol, color)
+	}
+
+	// Рендерим выход
+	if state.Level.ExitRoom != nil {
+		exitX := state.Level.ExitRoom.X + state.Level.ExitRoom.Width/2
+		exitY := state.Level.ExitRoom.Y + state.Level.ExitRoom.Height/2
+		if state.Level.Visible[exitX][exitY] {
+			gi.renderObject3D(entity.Position{X: exitX, Y: exitY}, ">", 3)
+		}
+	}
 }
 
 // Функция для рендеринга отдельных объектов
 func (gi *GameInterface) renderObject3D(pos entity.Position, symbol string, color int16) {
-    state := gi.game.State
-    maxY, maxX := gi.gameWindow.MaxYX() // Получаем оба размера
-    screenWidth := maxX - 2
-    screenHeight := maxY - 2
+	state := gi.game.State
+	maxY, maxX := gi.gameWindow.MaxYX()
+	screenWidth := maxX - 2
+	screenHeight := maxY - 2
 
-    // Вычисляем позицию объекта относительно игрока
-    relX := float64(pos.X) - float64(state.Player.Position.X) + 0.5
-    relY := float64(pos.Y) - float64(state.Player.Position.Y) + 0.5
+	relX := float64(pos.X) - float64(state.Player.Position.X) + 0.5
+	relY := float64(pos.Y) - float64(state.Player.Position.Y) + 0.5
 
-    // Преобразуем в экранные координаты
-    transformX := relY*state.PlayerDir.X - relX*state.PlayerDir.Y
-    transformY := relY*state.PlayerDir.Y + relX*state.PlayerDir.X
+	transformX := relY*state.PlayerDir.X - relX*state.PlayerDir.Y
+	transformY := relY*state.PlayerDir.Y + relX*state.PlayerDir.X
+	if transformY <= 0 {
+		return
+	}
 
-    if transformY <= 0 {
-        return // Объект позади игрока
-    }
+	screenX := int(float64(screenWidth) / 2 * (1 + transformX/transformY))
+	distance := math.Sqrt(relX*relX + relY*relY)
+	objectSize := int(float64(screenHeight) / distance)
+	if objectSize < 1 {
+		objectSize = 1
+	}
+	if objectSize > screenHeight/2 {
+		objectSize = screenHeight / 2
+	}
+	screenY := screenHeight/2 - objectSize/2
 
-    // Вычисляем экранную позицию
-    screenX := int(float64(screenWidth)/2 * (1 + transformX/transformY))
-    distance := math.Sqrt(relX*relX + relY*relY)
+	shape := "circle"
+	switch symbol {
+	case "Z", "V", "O", "G", ">":
+		shape = symbol
+	case "%", "&", "?", "$":
+		shape = "square"
+	case "R", "B", "Y", "K":
+		shape = "letter"
+	case "!":
+		shape = "sword"
+	}
 
-    // Вычисляем размер объекта (чем дальше, тем меньше)
-    objectSize := int(float64(screenHeight) / distance)
-    if objectSize < 1 {
-        objectSize = 1
-    }
-    if objectSize > screenHeight/2 {
-        objectSize = screenHeight / 2
-    }
+	gi.gameWindow.ColorOn(color)
 
-    // Вычисляем вертикальную позицию
-    screenY := screenHeight/2 - objectSize/2
+	switch shape {
 
-    // Проверяем, находится ли объект в поле зрения
-    if screenX >= -objectSize && screenX < screenWidth+objectSize &&
-        screenY >= -objectSize && screenY < screenHeight+objectSize {
-        
-        // Рисуем объект
-        gi.gameWindow.ColorOn(color)
-        for y := screenY; y < screenY+objectSize && y < screenHeight; y++ {
-            if y >= 0 {
-                gi.gameWindow.MovePrint(y+1, screenX+1, symbol)
-            }
-        }
-        gi.gameWindow.ColorOff(color)
-    }
+	case "Z", "V", "O", "G", "M": // ЗМоснтыр все - человечки
+		bodyHeight := objectSize / 2
+		if bodyHeight < 1 {
+			bodyHeight = 1
+		}
+		bodyWidth := objectSize / 3
+		if bodyWidth < 1 {
+			bodyWidth = 1
+		}
+
+		// Голова
+		if screenY >= 0 && screenY < screenHeight {
+			gi.gameWindow.MovePrint(screenY+1, screenX+1, "o")
+		}
+		// Тело
+		for y := 1; y <= bodyHeight && screenY+y < screenHeight; y++ {
+			for x := -bodyWidth; x <= bodyWidth; x++ {
+				sx := screenX + x
+				if sx >= 0 && sx < screenWidth {
+					gi.gameWindow.MovePrint(screenY+y+1, sx+1, "█")
+				}
+			}
+		}
+		// Руки
+		armY := screenY + bodyHeight/2
+		if armY >= 0 && armY < screenHeight {
+			for x := -bodyWidth * 2; x <= bodyWidth*2; x++ {
+				sx := screenX + x
+				if sx >= 0 && sx < screenWidth {
+					gi.gameWindow.MovePrint(armY+1, sx+1, "─")
+				}
+			}
+		}
+		// Ноги
+		legHeight := objectSize / 3
+		if legHeight < 1 {
+			legHeight = 1
+		}
+		for y := 0; y < legHeight && screenY+bodyHeight+y < screenHeight; y++ {
+			for x := -bodyWidth; x <= -1; x++ {
+				sx := screenX + x
+				if sx >= 0 && sx < screenWidth {
+					gi.gameWindow.MovePrint(screenY+bodyHeight+y+1, sx+1, "█")
+				}
+			}
+			for x := 1; x <= bodyWidth; x++ {
+				sx := screenX + x
+				if sx >= 0 && sx < screenWidth {
+					gi.gameWindow.MovePrint(screenY+bodyHeight+y+1, sx+1, "█")
+				}
+			}
+		}
+
+	case "S": // Змей - волнистая змейка)
+		for y := 0; y < objectSize; y++ {
+			drawY := screenY + y
+			drawX := screenX + int(math.Sin(float64(y)/2)*float64(objectSize/2))
+			if drawX >= 0 && drawX < screenWidth && drawY >= 0 && drawY < screenHeight {
+				gi.gameWindow.MovePrint(drawY+1, drawX+1, "~")
+			}
+		}
+
+	case "square":
+		for y := 0; y < objectSize; y++ {
+			drawY := screenY + y
+			if drawY < 0 || drawY >= screenHeight {
+				continue
+			}
+			for x := 0; x < objectSize; x++ {
+				drawX := screenX - objectSize/2 + x
+				if drawX >= 0 && drawX < screenWidth {
+					gi.gameWindow.MovePrint(drawY+1, drawX+1, symbol)
+				}
+			}
+		}
+
+	case "letter":
+		for y := 0; y < objectSize; y++ {
+			drawY := screenY + y
+			if drawY >= 0 && drawY < screenHeight {
+				gi.gameWindow.MovePrint(drawY+1, screenX+1, symbol)
+			}
+		}
+
+	case "sword":
+		for y := 0; y < objectSize; y++ {
+			drawY := screenY + y
+			if drawY >= 0 && drawY < screenHeight {
+				gi.gameWindow.MovePrint(drawY+1, screenX+1, symbol)
+			}
+		}
+
+	case "circle":
+		radius := objectSize / 2
+		for y := -radius; y <= radius; y++ {
+			for x := -radius; x <= radius; x++ {
+				if x*x+y*y <= radius*radius {
+					drawX := screenX + x
+					drawY := screenY + y
+					if drawX >= 0 && drawX < screenWidth &&
+						drawY >= 0 && drawY < screenHeight {
+						gi.gameWindow.MovePrint(drawY+1, drawX+1, symbol)
+					}
+				}
+			}
+		}
+	case ">":
+		width := 2
+		if width > screenWidth {
+			width = screenWidth
+		}
+
+		stepGap := 2
+		if stepGap > objectSize/3 {
+			stepGap = objectSize / 3
+		}
+
+		for y := 0; y < objectSize && screenY+y < screenHeight; y++ {
+			for x := 0; x < width; x++ {
+				sx := screenX - width/2 + x
+				sy := screenY + y
+				if sx >= 0 && sx < screenWidth && sy >= 0 && sy < screenHeight {
+					gi.gameWindow.MovePrint(sy+1, sx+1, "|")
+				}
+			}
+		}
+
+		for y := 0; y < objectSize && screenY+y < screenHeight; y += stepGap {
+			for x := -1; x <= width; x++ {
+				sx := screenX + x
+				sy := screenY + y
+				if sx >= 0 && sx < screenWidth && sy >= 0 && sy < screenHeight {
+					gi.gameWindow.MovePrint(sy+1, sx+1, "=")
+				}
+			}
+		}
+	}
+
+	gi.gameWindow.ColorOff(color)
 }
 
 // Рендерим HUD поверх 3D сцены
 func (gi *GameInterface) render3DHUD() {
 	state := gi.game.State
 	maxY, maxX := gi.gameWindow.MaxYX()
-	
+
 	// Полупрозрачный фон для HUD
 	gi.gameWindow.ColorOn(7)
 	for x := 0; x < maxX; x++ {
 		gi.gameWindow.MovePrint(maxY-3, x, " ")
 	}
 	gi.gameWindow.ColorOff(7)
-	
+
 	// Информация о здоровье
 	healthPercent := float64(state.Player.Health) / float64(state.Player.MaxHealth)
 	healthBar := "["
 	barWidth := 20
 	filled := int(healthPercent * float64(barWidth))
-	
+
 	for i := 0; i < barWidth; i++ {
 		if i < filled {
 			healthBar += "="
@@ -949,19 +1138,19 @@ func (gi *GameInterface) render3DHUD() {
 		}
 	}
 	healthBar += "]"
-	
+
 	gi.gameWindow.MovePrint(maxY-2, 1, "HP: "+healthBar)
-	gi.gameWindow.MovePrint(maxY-2, 25, 
+	gi.gameWindow.MovePrint(maxY-2, 25,
 		fmt.Sprintf("%d/%d", state.Player.Health, state.Player.MaxHealth))
-	
+
 	// Текущее оружие
 	if state.Player.CurrentWeapon != nil {
-		gi.gameWindow.MovePrint(maxY-1, 1, 
+		gi.gameWindow.MovePrint(maxY-1, 1,
 			"Weapon: "+gi.game.GetItemName(state.Player.CurrentWeapon))
 	} else {
 		gi.gameWindow.MovePrint(maxY-1, 1, "Weapon: None")
 	}
-	
+
 	// Подсказки управления
 	controls := "WASD:Move  Mouse:Look  E:Inventory  Space:Interact  T:2D/3D"
 	gi.gameWindow.MovePrint(maxY-1, maxX-len(controls)-1, controls)
