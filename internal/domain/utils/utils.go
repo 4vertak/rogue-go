@@ -118,17 +118,15 @@ func GetEnemySymbol(state *entity.GameState, enemy *entity.Enemy) string {
 func GetEnemyColor(enemy *entity.Enemy) int16 {
 	switch enemy.Type {
 	case entity.Zombie:
-		return 20
+		return 27
 	case entity.Vampire:
-		return 21
+		return 28
 	case entity.Ghost:
-		return 22
+		return 29
 	case entity.Ogre:
-		return 23
+		return 30
 	case entity.SnakeMage:
-		return 24
-	case entity.Mimic:
-		return 9
+		return 31
 	default:
 		return 14
 	}

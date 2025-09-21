@@ -400,14 +400,14 @@ func GetDoorSymbol(door *entity.Door) string {
 func GetDoorColor(door *entity.Door) int16 {
 	switch door.Color {
 	case entity.KeyRed:
-		return 10 // Красный
+		return 15 // 15
 	case entity.KeyBlue:
-		return 11 // Синий
+		return 18 // 18
 	case entity.KeyGreen:
-		return 12 // Зеленый
+		return 21 // 21
 	case entity.KeyYellow:
-		return 13 // Желтый
+		return 24 // 24
 	default:
-		return 1 // Белый
+		return 14
 	}
 }
