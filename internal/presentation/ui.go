@@ -29,6 +29,7 @@ type GameInterface struct {
 	inventoryWindow *goncurses.Window
 	showMinimap     bool
 	game            *domain.Game
+	renderCache     map[string]interface{} // Кэш для рендеринга
 }
 
 func NewGameInterface(game *domain.Game) *GameInterface {
@@ -51,6 +52,7 @@ func (gi *GameInterface) Initialize() error {
 	gi.initColors()
 
 	gi.showMinimap = true
+	gi.renderCache = make(map[string]interface{})
 	return nil
 }
 

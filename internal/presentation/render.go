@@ -3,6 +3,7 @@ package presentation
 import (
 	"fmt"
 	"math"
+	"sort"
 	"rogue-go/internal/domain/entity"
 	"strconv"
 
@@ -281,290 +282,323 @@ func (gi *GameInterface) renderMap() {
 const hugeFloat = 1e30 //константа для очень большого числа
 
 func (gi *GameInterface) render3D() {
-	gi.gameWindow.Erase()
+    gi.gameWindow.Erase()
 
-	player := gi.game.State.Player
-	level := gi.game.State.Level
-	maxY, maxX := gi.gameWindow.MaxYX()
-	width, height := maxX-2, maxY-2
-	// Максимальное расстояние видимости
-	maxViewDistance := 30.0
+    player := gi.game.State.Player
+    level := gi.game.State.Level
+    maxY, maxX := gi.gameWindow.MaxYX()
+    width, height := maxX-2, maxY-2
+    
+    // Кэшируем часто используемые значения
+    posX := float64(player.Position.X) + 0.5
+    posY := float64(player.Position.Y) + 0.5
+    dirX := gi.game.State.PlayerDir.X
+    dirY := gi.game.State.PlayerDir.Y
+    planeX := gi.game.State.PlayerPlane.X
+    planeY := gi.game.State.PlayerPlane.Y
 
-	zBuffer := make([]float64, width)
-	for i := range zBuffer {
-		zBuffer[i] = maxViewDistance
-	}
+    // Предварительно вычисляем видимых врагов и предметы
+    visibleEnemies := gi.getVisibleEnemies()
+    visibleItems := gi.getVisibleItems()
 
-	for x := 0; x < width; x++ {
+    zBuffer := make([]float64, width)
+    for i := range zBuffer {
+        zBuffer[i] = 30.0 // maxViewDistance
+    }
 
-		cameraX := 2*float64(x)/float64(width) - 1
-		rayDirX := gi.game.State.PlayerDir.X + gi.game.State.PlayerPlane.X*cameraX
-		rayDirY := gi.game.State.PlayerDir.Y + gi.game.State.PlayerPlane.Y*cameraX
+    // Основной цикл по x-координатам экрана
+    for x := 0; x < width; x++ {
+        cameraX := 2*float64(x)/float64(width) - 1
+        rayDirX := dirX + planeX*cameraX
+        rayDirY := dirY + planeY*cameraX
 
-		posX := float64(player.Position.X) + 0.5
-		posY := float64(player.Position.Y) + 0.5
+        // БЫСТРЫЙ АЛГОРИТМ DDA
+        mapX, mapY := int(posX), int(posY)
+        
+        var deltaDistX, deltaDistY float64
+        if math.Abs(rayDirX) > 1e-9 {
+            deltaDistX = math.Abs(1.0 / rayDirX)
+        } else {
+            deltaDistX = 1e30
+        }
+        if math.Abs(rayDirY) > 1e-9 {
+            deltaDistY = math.Abs(1.0 / rayDirY)
+        } else {
+            deltaDistY = 1e30
+        }
 
-		var deltaDistX, deltaDistY float64
-		if math.Abs(rayDirX) < 1e-9 {
-			deltaDistX = hugeFloat
-		} else {
-			deltaDistX = math.Abs(1.0 / rayDirX)
-		}
-		if math.Abs(rayDirY) < 1e-9 {
-			deltaDistY = hugeFloat
-		} else {
-			deltaDistY = math.Abs(1.0 / rayDirY)
-		}
+        var stepX, stepY int
+        var sideDistX, sideDistY float64
 
-		// шаги
-		var stepX, stepY int
-		var sideDistX, sideDistY float64
+        if rayDirX < 0 {
+            stepX = -1
+            sideDistX = (posX - float64(mapX)) * deltaDistX
+        } else {
+            stepX = 1
+            sideDistX = (float64(mapX) + 1.0 - posX) * deltaDistX
+        }
+        if rayDirY < 0 {
+            stepY = -1
+            sideDistY = (posY - float64(mapY)) * deltaDistY
+        } else {
+            stepY = 1
+            sideDistY = (float64(mapY) + 1.0 - posY) * deltaDistY
+        }
 
-		if rayDirX < 0 {
-			stepX = -1
-			sideDistX = (posX - float64(int(posX))) * deltaDistX
-		} else {
-			stepX = 1
-			sideDistX = (float64(int(posX)+1) - posX) * deltaDistX
-		}
-		if rayDirY < 0 {
-			stepY = -1
-			sideDistY = (posY - float64(int(posY))) * deltaDistY
-		} else {
-			stepY = 1
-			sideDistY = (float64(int(posY)+1) - posY) * deltaDistY
-		}
+        // DDA алгоритм
+        hit := false
+        side := 0
+        for !hit {
+            if sideDistX < sideDistY {
+                sideDistX += deltaDistX
+                mapX += stepX
+                side = 0
+            } else {
+                sideDistY += deltaDistY
+                mapY += stepY
+                side = 1
+            }
 
-		mapX, mapY := int(posX), int(posY)
-		hit, side := false, 0
+            // Проверка границ
+            if mapX < 0 || mapX >= len(level.Grid) || mapY < 0 || mapY >= len(level.Grid[0]) {
+                break
+            }
 
-		for !hit {
-			if sideDistX < sideDistY {
-				sideDistX += deltaDistX
-				mapX += stepX
-				side = 0
-			} else {
-				sideDistY += deltaDistY
-				mapY += stepY
-				side = 1
-			}
+            // Проверка стены или двери
+            door := gi.getDoorAt(mapX, mapY)
+            isClosedDoor := door != nil && door.IsLocked
+            
+            if level.Grid[mapX][mapY].IsWall || isClosedDoor {
+                hit = true
+            }
+        }
 
-			// границы
-			if mapX < 0 || mapX >= len(level.Grid) ||
-				mapY < 0 || mapY >= len(level.Grid[0]) {
-				hit = true
-				break
-			}
+        if !hit {
+            continue
+        }
 
-			door := gi.getDoorAt(mapX, mapY)
-			isClosedDoor := door != nil && door.IsLocked
+        // Вычисление расстояния
+        var perpWallDist float64
+        if side == 0 {
+            perpWallDist = (float64(mapX) - posX + float64(1-stepX)/2) / rayDirX
+        } else {
+            perpWallDist = (float64(mapY) - posY + float64(1-stepY)/2) / rayDirY
+        }
 
-			if level.Grid[mapX][mapY].IsWall || (isClosedDoor) {
-				hit = true
-			}
-		}
+        if perpWallDist <= 0 || perpWallDist > 30.0 {
+            continue
+        }
 
-		if !hit {
-			continue
-		}
+        zBuffer[x] = perpWallDist
 
-		if mapX < 0 || mapX >= len(level.Grid) ||
-			mapY < 0 || mapY >= len(level.Grid[0]) {
-			continue
-		}
+        // Отрисовка стены
+        lineHeight := int(float64(height) / perpWallDist)
+        if lineHeight > height {
+            lineHeight = height
+        }
 
-		var perpWallDist float64
-		if side == 0 {
-			if math.Abs(rayDirX) < 1e-9 {
-				continue
-			}
-			perpWallDist = (float64(mapX) - posX + float64(1-stepX)/2) / rayDirX
-		} else {
-			if math.Abs(rayDirY) < 1e-9 {
-				continue
-			}
-			perpWallDist = (float64(mapY) - posY + float64(1-stepY)/2) / rayDirY
-		}
-		if perpWallDist <= 0 {
-			continue
-		}
-		if perpWallDist > maxViewDistance {
-			continue
-		}
-		zBuffer[x] = perpWallDist
-		drawWall := true
+        drawStart := -lineHeight/2 + height/2
+        if drawStart < 0 {
+            drawStart = 0
+        }
+        drawEnd := lineHeight/2 + height/2
+        if drawEnd >= height {
+            drawEnd = height - 1
+        }
 
-		lineHeight := int(float64(height) / perpWallDist)
-		if lineHeight > height {
-			lineHeight = height
-		}
+        // Отрисовка стены (оптимизированная)
+        door := gi.getDoorAt(mapX, mapY)
+        isClosedDoor := door != nil && door.IsLocked
+        
+        var wallColor int16
+        var textureSymbol string
+        
+        if isClosedDoor {
+            textureSymbol = "#"
+            wallColor = gi.getDoorColorWithDistance(door, perpWallDist, 30.0, side)
+        } else {
+            textureSymbol = gi.getWallTexture(mapX, mapY)
+            wallColor = gi.getDistanceColor(perpWallDist, 30.0, side)
+            if side == 1 {
+                wallColor += 3 // Затемнение для вертикальных сторон
+            }
+        }
 
-		drawStart := -lineHeight/2 + height/2
-		if drawStart < 0 {
-			drawStart = 0
-		}
-		drawEnd := lineHeight/2 + height/2
-		if drawEnd >= height {
-			drawEnd = height - 1
-		}
+        // Быстрая отрисовка столбца стены
+        for y := drawStart; y <= drawEnd; y++ {
+            gi.gameWindow.ColorOn(wallColor)
+            gi.gameWindow.MovePrint(y+1, x+1, textureSymbol)
+            gi.gameWindow.ColorOff(wallColor)
+        }
 
-		for _, enemy := range gi.game.State.Enemies {
-			if !enemy.IsVisible || !gi.game.State.Level.Visible[enemy.Position.X][enemy.Position.Y] {
-				continue
-			}
+        // Отрисовка пола и потолка
+        for y := 0; y < height; y++ {
+            if y < drawStart {
+                gi.gameWindow.ColorOn(8) // Потолок
+                gi.gameWindow.MovePrint(y+1, x+1, " ")
+                gi.gameWindow.ColorOff(8)
+            } else if y > drawEnd {
+                gi.gameWindow.ColorOn(9) // Пол
+                gi.gameWindow.MovePrint(y+1, x+1, ".")
+                gi.gameWindow.ColorOff(9)
+            }
+        }
+    }
 
-			relX := float64(enemy.Position.X) - posX + 0.5
-			relY := float64(enemy.Position.Y) - posY + 0.5
+    // Отрисовка спрайтов (оптимизированная)
+    gi.drawSpritesOptimized(visibleEnemies, visibleItems, zBuffer, width, height)
 
-			transformX := relY*gi.game.State.PlayerDir.X - relX*gi.game.State.PlayerDir.Y
-			transformY := relY*gi.game.State.PlayerDir.Y + relX*gi.game.State.PlayerDir.X
-			if transformY <= 0 {
-				continue
-			}
+    if gi.showMinimap {
+        gi.renderMinimap()
+    }
+    gi.render3DHUD()
+    gi.gameWindow.Refresh()
+}
 
-			enemyScreenX := int(float64(width) / 2 * (1 + transformX/transformY))
-			sprite := gi.GetEnemySprite(enemy)
-			spriteW := len(sprite[0])
+// Новая оптимизированная функция для отрисовки спрайтов
+func (gi *GameInterface) drawSpritesOptimized(enemies []*entity.Enemy, items []*entity.Item, zBuffer []float64, width, height int) {
+    player := gi.game.State.Player
+    posX := float64(player.Position.X) + 0.5
+    posY := float64(player.Position.Y) + 0.5
+    dirX := gi.game.State.PlayerDir.X
+    dirY := gi.game.State.PlayerDir.Y
+    planeX := gi.game.State.PlayerPlane.X
+    planeY := gi.game.State.PlayerPlane.Y
 
-			spriteScreenWidth := int(float64(height) / transformY)
-			spriteStartX := enemyScreenX - spriteScreenWidth/2
-			spriteEndX := enemyScreenX + spriteScreenWidth/2
+    // Сортируем спрайты по расстоянию (дальние рисуем первыми)
+    sprites := gi.prepareSprites(enemies, items, posX, posY)
+    
+    for _, sprite := range sprites {
+        spriteX := sprite.x - posX
+        spriteY := sprite.y - posY
+        
+        // Преобразование с матрицей камеры
+        invDet := 1.0 / (planeX * dirY - dirX * planeY)
+        transformX := invDet * (dirY * spriteX - dirX * spriteY)
+        transformY := invDet * (-planeY * spriteX + planeX * spriteY)
+        
+        if transformY <= 0 {
+            continue
+        }
 
-			if x >= spriteStartX && x < spriteEndX {
-				texX := (x - spriteStartX) * spriteW / spriteScreenWidth
+        spriteScreenX := int(float64(width) / 2 * (1 + transformX/transformY))
+        spriteHeight := int(float64(height) / transformY)
+        spriteWidth := spriteHeight
 
-				if transformY < perpWallDist {
-					gi.drawSpriteColumn(
-						x, transformY, sprite, texX, height, gi.game.GetEnemyColor(enemy), zBuffer, drawStart, drawEnd)
-					drawWall = false
-					break
-				}
-			}
-		}
+        drawStartY := -spriteHeight/2 + height/2
+        if drawStartY < 0 {
+            drawStartY = 0
+        }
+        drawEndY := spriteHeight/2 + height/2
+        if drawEndY >= height {
+            drawEndY = height - 1
+        }
 
-		if drawWall {
+        drawStartX := -spriteWidth/2 + spriteScreenX
+        if drawStartX < 0 {
+            drawStartX = 0
+        }
+        drawEndX := spriteWidth/2 + spriteScreenX
+        if drawEndX >= width {
+            drawEndX = width - 1
+        }
 
-			var wallX float64
-			if side == 0 {
-				wallX = posY + perpWallDist*rayDirY
-			} else {
-				wallX = posX + perpWallDist*rayDirX
-			}
-			wallX -= math.Floor(wallX)
+        // Отрисовка спрайта
+        for stripe := drawStartX; stripe < drawEndX; stripe++ {
+            if stripe < 0 || stripe >= width || transformY > zBuffer[stripe] {
+                continue
+            }
 
-			door := gi.getDoorAt(mapX, mapY)
-			isClosedDoor := door != nil && door.IsLocked
-			var textureSymbol string
-			if isClosedDoor {
-				textureSymbol = "#"
-			} else {
-				textureSymbol = gi.getWallTexture(mapX, mapY)
-			}
+            texX := int(256 * (stripe - (-spriteWidth/2 + spriteScreenX)) * len(sprite.data[0]) / spriteWidth) / 256
+            
+            for y := drawStartY; y < drawEndY; y++ {
+                d := (y - (-spriteHeight/2 + height/2)) * 256 / spriteHeight
+                texY := ((d * len(sprite.data)) / 256) 
+                
+                if texX >= 0 && texX < len(sprite.data[0]) && texY >= 0 && texY < len(sprite.data) {
+                    color := sprite.data[texY][texX]
+                    if color != ' ' {
+                        gi.gameWindow.ColorOn(sprite.color)
+                        gi.gameWindow.MovePrint(y+1, stripe+1, string(color))
+                        gi.gameWindow.ColorOff(sprite.color)
+                    }
+                }
+            }
+        }
+    }
+}
 
-			var wallColor int16
-			if isClosedDoor {
-				wallColor = gi.getDoorColorWithDistance(door, perpWallDist, maxViewDistance, side)
-			} else {
-				wallColor = gi.getDistanceColor(perpWallDist, maxViewDistance, side)
-				if side == 1 {
-					wallColor += 3
-				}
-			}
+// Вспомогательная структура для спрайтов
+type spriteData struct {
+    x, y   float64
+    data   [][]rune
+    color  int16
+    dist   float64
+}
 
-			if isClosedDoor {
-				doorHeight := len(doorSprite)
-				if doorHeight == 0 {
-					doorHeight = 1
-				}
-				doorWidth := maxDoorSpriteWidth()
-				if doorWidth == 0 {
-					doorWidth = 1
-				}
-				texX := int(wallX * float64(doorWidth))
-				if texX < 0 {
-					texX = 0
-				}
-				if texX >= doorWidth {
-					texX = doorWidth - 1
-				}
+// Подготовка спрайтов с сортировкой
+func (gi *GameInterface) prepareSprites(enemies []*entity.Enemy, items []*entity.Item, posX, posY float64) []spriteData {
+    var sprites []spriteData
 
-				for y := drawStart; y <= drawEnd; y++ {
-					relativeY := y - drawStart
-					texY := int(float64(relativeY) * float64(doorHeight) / float64(lineHeight))
-					if texY < 0 {
-						texY = 0
-					}
-					if texY >= doorHeight {
-						texY = doorHeight - 1
-					}
+    // Враги
+    for _, enemy := range enemies {
+        if !enemy.IsVisible {
+            continue
+        }
+        dist := math.Pow(float64(enemy.Position.X)+0.5-posX, 2) + 
+                math.Pow(float64(enemy.Position.Y)+0.5-posY, 2)
+        sprite := spriteData{
+            x:     float64(enemy.Position.X) + 0.5,
+            y:     float64(enemy.Position.Y) + 0.5,
+            data:  gi.GetEnemySprite(enemy),
+            color: gi.game.GetEnemyColor(enemy),
+            dist:  dist,
+        }
+        sprites = append(sprites, sprite)
+    }
 
-					symbol := gi.getDoorSymbolSafe(texX, texY)
-					gi.gameWindow.ColorOn(wallColor)
-					gi.gameWindow.MovePrint(y+1, x+1, symbol)
-					gi.gameWindow.ColorOff(wallColor)
-				}
-			} else {
-				for y := drawStart; y <= drawEnd; y++ {
-					gi.gameWindow.ColorOn(wallColor)
-					gi.gameWindow.MovePrint(y+1, x+1, textureSymbol)
-					gi.gameWindow.ColorOff(wallColor)
-				}
-			}
+    // Предметы
+    for _, item := range items {
+        dist := math.Pow(float64(item.Position.X)+0.5-posX, 2) + 
+                math.Pow(float64(item.Position.Y)+0.5-posY, 2)
+        sprite := spriteData{
+            x:     float64(item.Position.X) + 0.5,
+            y:     float64(item.Position.Y) + 0.5,
+            data:  gi.GetItemSprite(item),
+            color: gi.game.GetItemColor(item),
+            dist:  dist,
+        }
+        sprites = append(sprites, sprite)
+    }
 
-			// потолок / пол
-			for y := 0; y < height; y++ {
-				if y < drawStart {
-					gi.gameWindow.ColorOn(8)
-					gi.gameWindow.MovePrint(y+1, x+1, " ")
-					gi.gameWindow.ColorOff(8)
-				} else if y > drawEnd {
-					gi.gameWindow.ColorOn(9)
-					gi.gameWindow.MovePrint(y+1, x+1, ".")
-					gi.gameWindow.ColorOff(9)
-				}
-			}
-		}
+    // Сортировка по расстоянию (от дальних к ближним)
+    sort.Slice(sprites, func(i, j int) bool {
+        return sprites[i].dist > sprites[j].dist
+    })
 
-		for _, item := range gi.game.State.Items {
-			if !gi.game.State.Level.Visible[item.Position.X][item.Position.Y] {
-				continue
-			}
+    return sprites
+}
 
-			relX := float64(item.Position.X) - posX + 0.5
-			relY := float64(item.Position.Y) - posY + 0.5
+// Быстрое получение видимых врагов
+func (gi *GameInterface) getVisibleEnemies() []*entity.Enemy {
+    var visible []*entity.Enemy
+    for _, enemy := range gi.game.State.Enemies {
+        if enemy.IsVisible && gi.game.State.Level.Visible[enemy.Position.X][enemy.Position.Y] {
+            visible = append(visible, enemy)
+        }
+    }
+    return visible
+}
 
-			transformX := relY*gi.game.State.PlayerDir.X - relX*gi.game.State.PlayerDir.Y
-			transformY := relY*gi.game.State.PlayerDir.Y + relX*gi.game.State.PlayerDir.X
-			if transformY <= 0 {
-				continue
-			}
-
-			spriteScreenX := int(float64(width) / 2 * (1 + transformX/transformY))
-			sprite := gi.GetItemSprite(item)
-			spriteW := len(sprite[0])
-
-			spriteScreenWidth := int(float64(height) / transformY)
-			spriteStartX := spriteScreenX - spriteScreenWidth/2
-			spriteEndX := spriteScreenX + spriteScreenWidth/2
-
-			if x >= spriteStartX && x < spriteEndX {
-				texX := (x - spriteStartX) * spriteW / spriteScreenWidth
-
-				// предмет ближе, чем стена?
-				if transformY < zBuffer[x] {
-					gi.drawItemColumn(
-						x, transformY, sprite, texX, height, gi.game.GetItemColor(item),
-						zBuffer, drawStart, drawEnd)
-				}
-			}
-		}
-	}
-
-	if gi.showMinimap {
-		gi.renderMinimap()
-	}
-	gi.render3DHUD()
-	gi.gameWindow.Refresh()
+// Быстрое получение видимых предметов
+func (gi *GameInterface) getVisibleItems() []*entity.Item {
+    var visible []*entity.Item
+    for _, item := range gi.game.State.Items {
+        if gi.game.State.Level.Visible[item.Position.X][item.Position.Y] {
+            visible = append(visible, item)
+        }
+    }
+    return visible
 }
 
 func (gi *GameInterface) drawSpriteColumn(
