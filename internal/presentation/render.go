@@ -279,8 +279,6 @@ func (gi *GameInterface) renderMap() {
 	gi.gameWindow.Refresh()
 }
 
-const hugeFloat = 1e30 //константа для очень большого числа
-
 func (gi *GameInterface) render3D() {
     gi.gameWindow.Erase()
 
@@ -599,64 +597,6 @@ func (gi *GameInterface) getVisibleItems() []*entity.Item {
         }
     }
     return visible
-}
-
-func (gi *GameInterface) drawSpriteColumn(
-	screenX int,
-	distance float64,
-	sprite [][]rune,
-	texX int,
-	screenHeight int,
-	color int16,
-	zBuffer []float64,
-	drawStartWall, drawEndWall int,
-) {
-	spriteH := len(sprite)
-	lineHeight := int(float64(screenHeight) / distance)
-
-	drawStart := -lineHeight/2 + screenHeight/2
-	if drawStart < 0 {
-		drawStart = 0
-	}
-	drawEnd := lineHeight/2 + screenHeight/2
-	if drawEnd >= screenHeight {
-		drawEnd = screenHeight - 1
-	}
-
-	for y := 0; y < screenHeight; y++ {
-		var symbol string
-		if y >= drawStart && y <= drawEnd {
-			texY := (y - drawStart) * spriteH / lineHeight
-			symbol = gi.getMonsterSymbolSafe(sprite, texX, texY)
-		} else {
-			symbol = " "
-		}
-
-		if symbol != " " {
-			// монстр
-			gi.gameWindow.ColorOn(color)
-			gi.gameWindow.MovePrint(y+1, screenX+1, symbol)
-			gi.gameWindow.ColorOff(color)
-		} else {
-			if y >= drawStartWall && y <= drawEndWall {
-				// стена
-				wallDepth := zBuffer[screenX]
-				gi.gameWindow.ColorOn(gi.getDistanceColor(wallDepth, 15.0, 0)) // костыли
-				gi.gameWindow.MovePrint(y+1, screenX+1, "#")
-				gi.gameWindow.ColorOff(gi.getDistanceColor(wallDepth, 15.0, 0))
-			} else if y < drawStartWall {
-				// потолок
-				gi.gameWindow.ColorOn(8)
-				gi.gameWindow.MovePrint(y+1, screenX+1, " ")
-				gi.gameWindow.ColorOff(8)
-			} else if y > drawEndWall {
-				// пол
-				gi.gameWindow.ColorOn(9)
-				gi.gameWindow.MovePrint(y+1, screenX+1, ".")
-				gi.gameWindow.ColorOff(9)
-			}
-		}
-	}
 }
 
 func (gi *GameInterface) getWallTexture(mapX, mapY int) string {
