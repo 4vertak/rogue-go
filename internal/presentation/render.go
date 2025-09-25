@@ -367,6 +367,9 @@ func (gi *GameInterface) render3D() {
             isClosedDoor := door != nil && door.IsLocked
             
             if level.Grid[mapX][mapY].IsWall || isClosedDoor {
+                if isClosedDoor {
+                    break
+                }
                 hit = true
             }
         }
@@ -405,23 +408,16 @@ func (gi *GameInterface) render3D() {
         }
 
         // Отрисовка стены (оптимизированная)
-        door := gi.getDoorAt(mapX, mapY)
-        isClosedDoor := door != nil && door.IsLocked
         
         var wallColor int16
         var textureSymbol string
         
-        if isClosedDoor {
-            textureSymbol = "#"
-            wallColor = gi.getDoorColorWithDistance(door, perpWallDist, 30.0, side)
-        } else {
-            textureSymbol = gi.getWallTexture(mapX, mapY)
-            wallColor = gi.getDistanceColor(perpWallDist, 30.0, side)
-            if side == 1 {
-                wallColor += 3 // Затемнение для вертикальных сторон
-            }
-        }
 
+        textureSymbol = gi.getWallTexture(mapX, mapY)
+        wallColor = gi.getDistanceColor(perpWallDist, 30.0, side)
+        if side == 1 {
+            wallColor += 3 // Затемнение для вертикальных сторон
+        }
         // Быстрая отрисовка столбца стены
         for y := drawStart; y <= drawEnd; y++ {
             gi.gameWindow.ColorOn(wallColor)
@@ -567,6 +563,22 @@ func (gi *GameInterface) prepareSprites(enemies []*entity.Enemy, items []*entity
             dist:  dist,
         }
         sprites = append(sprites, sprite)
+    }
+    //двери
+    for _, door :=range gi.game.State.Level.Doors {
+        dist := math.Pow(float64(door.Position.X)+0.5-posX, 2) + math.Pow(float64(door.Position.Y)+0.5-posY, 2)
+        if !door.IsLocked {
+            continue
+        }
+        sprite := spriteData{
+            x:     float64(door.Position.X) + 0.5,
+            y:     float64(door.Position.Y) + 0.5,
+            data:  doorSprite,
+            color: gi.game.GetDoorColor(door),
+            dist:  dist,
+        }
+        sprites = append(sprites, sprite)
+    
     }
 
     // Сортировка по расстоянию (от дальних к ближним)
