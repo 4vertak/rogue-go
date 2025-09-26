@@ -1,3 +1,4 @@
+
 package presentation
 
 import (
@@ -473,9 +474,24 @@ func (gi *GameInterface) render3D() {
                 gi.gameWindow.MovePrint(y+1, x+1, " ")
                 gi.gameWindow.ColorOff(8)
             } else if y > drawEnd {
-                gi.gameWindow.ColorOn(9) // Пол
-                gi.gameWindow.MovePrint(y+1, x+1, ".")
-                gi.gameWindow.ColorOff(9)
+                rowDist := float64(height) /(2.0*float64(y) -float64(height))
+                floorX := posX + rowDist*(rayDirX)
+                floorY := posY + rowDist*(rayDirY)
+                cellX := int(floorX)
+                cellY := int(floorY)
+               
+                color := int16(9)
+                symbol := "."
+                if gi.isExitRoomCenter(cellX, cellY) {
+                 // texX := int((floorX - float64(cellX))*float64(len(stairSprite[0])))
+                 // texY := int((floorY - float64(cellY))*float64(len(stairSprite)))
+                  symbol = "#"//gi.getStairSymbol(texX, texY) говно со прайтом получается
+                  color = 24
+                } 
+          
+                gi.gameWindow.ColorOn(color) // Пол
+                gi.gameWindow.MovePrint(y+1, x+1, symbol)
+                gi.gameWindow.ColorOff(color)
             }
         }
     }
@@ -488,6 +504,26 @@ func (gi *GameInterface) render3D() {
     }
     gi.render3DHUD()
     gi.gameWindow.Refresh()
+}
+
+//func (gi * GameInterface) getStairSymbol(x, y int) string {
+//    if y >= 0 && y < len(stairSprite) {
+//        row := stairSprite[y]
+//        if x >= 0 && x < len(stairSprite) {
+//            return string(row[x])
+//        }
+//    }
+//    return " "
+//}
+
+func (gi* GameInterface) isExitRoomCenter(x, y int) bool{
+    room := gi.game.State.Level.ExitRoom
+    if room == nil {
+    return false
+    }
+    centerX := room.X + room.Width / 2
+    centerY := room.Y + room.Height / 2
+    return x == centerX && y == centerY
 }
 
 // Новая оптимизированная функция для отрисовки спрайтов
@@ -515,6 +551,8 @@ func (gi *GameInterface) drawSpritesOptimized(enemies []*entity.Enemy, items []*
         if transformY <= 0 {
             continue
         }
+
+
 
         spriteScreenX := int(float64(width) / 2 * (1 + transformX/transformY))
         spriteHeight := int(float64(height) / transformY)
@@ -605,6 +643,8 @@ func (gi *GameInterface) prepareSprites(enemies []*entity.Enemy, items []*entity
         }
         sprites = append(sprites, sprite)
     }
+    // лестинца
+   
 
     // Сортировка по расстоянию (от дальних к ближним)
     sort.Slice(sprites, func(i, j int) bool {
@@ -696,6 +736,21 @@ func (gi *GameInterface) getDistanceColor(distance float64, maxDistance float64,
 	}
 	return base
 }
+
+//var stairSprite = [][]rune {
+//        []rune("▓▓▓▓▓▓▓▓▓▓▓"),
+//        []rune("###########"),
+//        []rune("▓▓▓▓▓▓▓▓▓▓▓"),
+//        []rune("###########"),
+//        []rune("▓▓▓▓▓▓▓▓▓▓▓"),
+//        []rune("###########"),
+//        []rune("▓▓▓▓▓▓▓▓▓▓▓"),
+//        []rune("###########"),
+//        []rune("▓▓▓▓▓▓▓▓▓▓▓"),
+//        []rune("###########"),
+//        []rune("▓▓▓▓▓▓▓▓▓▓▓"),
+//
+//} 
 
 var doorSprite = [][]rune{
 	[]rune("MMMMMMMNdlolclclllllllllllllcckWMMMMMMMM"),
