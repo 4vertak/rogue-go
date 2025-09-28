@@ -57,24 +57,24 @@ func (gi *GameInterface) Initialize() error {
 }
 
 func (gi *GameInterface) Run() {
-    defer goncurses.End()
+	defer goncurses.End()
 
-    gi.renderInitialScreen()
-    gi.stdscr.Timeout(-1)
+	gi.renderInitialScreen()
+	gi.stdscr.Timeout(-1)
 
-    for gi.game.State.IsRunning {
-        gi.renderGame()
-        gi.handleInput()
-        if !gi.game.State.GameOver {
-            gi.game.UpdateGameState()
-        }
-        if gi.game.State.GameOver {
-            gi.showGameOver()
-            break
-        }
-        if gi.game.State.GameWon {
-            gi.showVictory()
-            break
-        }
-    }
+	for gi.game.State.IsRunning {
+		gi.renderGame()
+		gi.handleInput()
+		if !gi.game.State.GameOver {
+			gi.game.UpdateGameState()
+		}
+		if gi.game.State.GameOver {
+			gi.showGameOver()
+			break
+		}
+		if gi.game.State.GameWon {
+			gi.showVictory()
+			break
+		}
+	}
 }
