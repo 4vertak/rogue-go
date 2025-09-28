@@ -154,38 +154,6 @@ func (gi *GameInterface) getVisibleItems() []*entity.Item {
 	return visible
 }
 
-func (gi *GameInterface) drawItemColumn(
-	screenX int,
-	distance float64,
-	sprite [][]rune,
-	texX int,
-	screenHeight int,
-	color int16,
-	zBuffer []float64,
-	drawStartWall, drawEndWall int,
-) {
-	spriteH := len(sprite)
-	lineHeight := int(float64(screenHeight) / distance)
-
-	drawStart := -lineHeight/2 + screenHeight/2
-	if drawStart < 0 {
-		drawStart = 0
-	}
-	drawEnd := lineHeight/2 + screenHeight/2
-	if drawEnd >= screenHeight {
-		drawEnd = screenHeight - 1
-	}
-
-	for y := drawStart; y <= drawEnd; y++ {
-		texY := (y - drawStart) * spriteH / lineHeight
-		symbol := gi.getItemSymbolSafe(sprite, texX, texY)
-		if symbol != " " {
-			gi.gameWindow.ColorOn(color)
-			gi.gameWindow.MovePrint(y+1, screenX+1, symbol)
-			gi.gameWindow.ColorOff(color)
-		}
-	}
-}
 func maxDoorSpriteWidth() int {
 	maxW := 0
 	for _, row := range sprites.DoorSprite {
@@ -194,29 +162,6 @@ func maxDoorSpriteWidth() int {
 		}
 	}
 	return maxW
-}
-
-// надо обхединить 3 jlbyfrjds[ vtnjlf]
-func (gi *GameInterface) getMonsterSymbolSafe(sprite [][]rune, x, y int) string {
-	if y < 0 || y >= len(sprite) {
-		return " "
-	}
-	row := sprite[y]
-	if x < 0 || x >= len(row) {
-		return " "
-	}
-	return string(row[x])
-}
-
-func (gi *GameInterface) getItemSymbolSafe(sprite [][]rune, x, y int) string {
-	if y < 0 || y >= len(sprite) {
-		return " "
-	}
-	row := sprite[y]
-	if x < 0 || x >= len(row) {
-		return " "
-	}
-	return string(row[x])
 }
 
 func (gi *GameInterface) getDoorSymbolSafe(x, y int) string {
