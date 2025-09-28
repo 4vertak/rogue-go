@@ -7,7 +7,6 @@ import (
 	"sort"
 )
 
-// Новая оптимизированная функция для отрисовки спрайтов
 func (gi *GameInterface) drawSpritesOptimized(enemies []*entity.Enemy, items []*entity.Item, zBuffer []float64, width, height int) {
 	player := gi.game.State.Player
 	posX := float64(player.Position.X) + 0.5
@@ -17,14 +16,12 @@ func (gi *GameInterface) drawSpritesOptimized(enemies []*entity.Enemy, items []*
 	planeX := gi.game.State.PlayerPlane.X
 	planeY := gi.game.State.PlayerPlane.Y
 
-	// Сортируем спрайты по расстоянию (дальние рисуем первыми)
 	sprites := gi.prepareSprites(enemies, items, posX, posY)
 
 	for _, sprite := range sprites {
 		spriteX := sprite.x - posX
 		spriteY := sprite.y - posY
 
-		// Преобразование с матрицей камеры
 		invDet := 1.0 / (planeX*dirY - dirX*planeY)
 		transformX := invDet * (dirY*spriteX - dirX*spriteY)
 		transformY := invDet * (-planeY*spriteX + planeX*spriteY)
@@ -55,7 +52,6 @@ func (gi *GameInterface) drawSpritesOptimized(enemies []*entity.Enemy, items []*
 			drawEndX = width - 1
 		}
 
-		// Отрисовка спрайта
 		for stripe := drawStartX; stripe < drawEndX; stripe++ {
 			if stripe < 0 || stripe >= width || transformY > zBuffer[stripe] {
 				continue
@@ -80,7 +76,6 @@ func (gi *GameInterface) drawSpritesOptimized(enemies []*entity.Enemy, items []*
 	}
 }
 
-// Вспомогательная структура для спрайтов
 type spriteData struct {
 	x, y  float64
 	data  [][]rune
@@ -88,7 +83,6 @@ type spriteData struct {
 	dist  float64
 }
 
-// Подготовка спрайтов с сортировкой
 func (gi *GameInterface) prepareSprites(enemies []*entity.Enemy, items []*entity.Item, posX, posY float64) []spriteData {
 	var sprites []spriteData
 
@@ -123,8 +117,6 @@ func (gi *GameInterface) prepareSprites(enemies []*entity.Enemy, items []*entity
 		sprites = append(sprites, sprite)
 	}
 	// лестинца
-
-	// Сортировка по расстоянию (от дальних к ближним)
 	sort.Slice(sprites, func(i, j int) bool {
 		return sprites[i].dist > sprites[j].dist
 	})
@@ -132,7 +124,6 @@ func (gi *GameInterface) prepareSprites(enemies []*entity.Enemy, items []*entity
 	return sprites
 }
 
-// Быстрое получение видимых врагов
 func (gi *GameInterface) getVisibleEnemies() []*entity.Enemy {
 	var visible []*entity.Enemy
 	for _, enemy := range gi.game.State.Enemies {
@@ -143,7 +134,6 @@ func (gi *GameInterface) getVisibleEnemies() []*entity.Enemy {
 	return visible
 }
 
-// Быстрое получение видимых предметов
 func (gi *GameInterface) getVisibleItems() []*entity.Item {
 	var visible []*entity.Item
 	for _, item := range gi.game.State.Items {

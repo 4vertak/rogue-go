@@ -187,9 +187,11 @@ func (gi *GameInterface) render3D() {
 			}
 			// Быстрая отрисовка столбца стены
 			for y := drawStart; y <= drawEnd; y++ {
+				// gi.gameWindow.AttrOn(goncurses.A_DIM)
 				gi.gameWindow.ColorOn(wallColor)
 				gi.gameWindow.MovePrint(y+1, x+1, textureSymbol)
 				gi.gameWindow.ColorOff(wallColor)
+				// gi.gameWindow.AttrOff(goncurses.A_DIM)
 			}
 		}
 
@@ -206,13 +208,11 @@ func (gi *GameInterface) render3D() {
 				cellX := int(floorX)
 				cellY := int(floorY)
 
-				color := int16(9)
+				color := int16(entity.ColorDefault)
 				symbol := "."
 				if gi.isExitRoomCenter(cellX, cellY) {
-					// texX := int((floorX - float64(cellX))*float64(len(stairSprite[0])))
-					// texY := int((floorY - float64(cellY))*float64(len(stairSprite)))
-					symbol = "#" //gi.getStairSymbol(texX, texY) говно со прайтом получается
-					color = 24
+					symbol = ">"
+					color = entity.ColorWallNear
 				}
 
 				gi.gameWindow.ColorOn(color) // Пол
@@ -283,21 +283,21 @@ func (gi *GameInterface) getDistanceColor(distance float64, maxDistance float64,
 	var base int16
 	switch {
 	case distance < maxDistance/3:
-		base = ColorWallNear
+		base = entity.ColorWallNear
 	case distance < maxDistance*2/3:
-		base = ColorWallMid
+		base = entity.ColorWallMid
 	default:
-		base = ColorWallFar
+		base = entity.ColorWallFar
 	}
 
 	if side == 1 {
 		switch base {
-		case ColorWallNear:
-			return ColorWallNear
-		case ColorWallMid:
-			return ColorWallMid
-		case ColorWallFar:
-			return ColorWallFar
+		case entity.ColorWallNear:
+			return entity.ColorWallNear
+		case entity.ColorWallMid:
+			return entity.ColorWallMid
+		case entity.ColorWallFar:
+			return entity.ColorWallFar
 		}
 	}
 	return base
@@ -323,7 +323,7 @@ func (gi *GameInterface) getDoorColorWithDistance(door *entity.Door, distance fl
 		base += 2
 	}
 	if side == 1 {
-		if base < ColorDoorYellowFar {
+		if base < entity.ColorDoorYellowFar {
 			base += 1
 		}
 	}
