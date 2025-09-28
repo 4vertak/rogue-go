@@ -151,7 +151,7 @@ func handleEnemyDefeat(state *entity.GameState, enemy *entity.Enemy) {
 		utils.AddMessage(state, "Snake Mage defeated! +40 gold")
 		state.Backpack.Treasure += 40
 	case entity.Mimic:
-		utils.AddMessage(state, "Snake Mage defeated! +40 gold")
+		utils.AddMessage(state, "Mimic defeated! +15 gold")
 		state.Backpack.Treasure += 15
 	}
 
