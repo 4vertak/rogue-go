@@ -7,6 +7,15 @@ import (
 )
 
 func (gi *GameInterface) handleInput() {
+    // Если игра окончена, обрабатываем только выход
+    if gi.game.State.GameOver || gi.game.State.GameWon {
+        char := gi.stdscr.GetChar()
+        if char == 'q' || char == 'Q' || char == goncurses.KEY_ESC {
+            gi.game.State.IsRunning = false
+        }
+        return
+    }
+
 	state := gi.game.State
 
 	char := gi.stdscr.GetChar()

@@ -132,10 +132,16 @@ func (g *Game) UpdateGameState() {
 }
 
 func (g *Game) CheckGameConditions() {
-	if g.State.Player != nil && g.State.Player.Health <= 0 {
-		g.State.GameOver = true
-		g.AddMessage("You have died! Game Over.")
-	}
+    if g.State.Player != nil && g.State.Player.Health <= 0 {
+        g.State.GameOver = true
+        g.State.IsRunning = false
+        g.AddMessage("You have died! Game Over.")
+    }
+    
+    // Проверка на победу
+    if g.State.GameWon {
+        g.State.IsRunning = false
+    }
 }
 
 func (g *Game) AddMessage(msg string) {

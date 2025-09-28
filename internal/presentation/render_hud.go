@@ -89,8 +89,16 @@ func (gi *GameInterface) showGameOver() {
 	gi.stdscr.Printf("Level reached: %d\n", eg.Level)
 	gi.stdscr.Printf("Treasures collected: %d\n", eg.Treasures)
 	gi.stdscr.Printf("Enemies defeated: %d\n", eg.Enemies)
-	gi.stdscr.Print("\nPress any key to continue...")
+	gi.stdscr.Print("\nPress 'Q' to return to main menu...")
 	gi.stdscr.Refresh()
+
+	// Ждем нажатия Q для возврата в меню
+    for {
+        char := gi.stdscr.GetChar()
+        if char == 'q' || char == 'Q' {
+            break
+        }
+    }
 }
 
 func (gi *GameInterface) showVictory() {
@@ -102,7 +110,14 @@ func (gi *GameInterface) showVictory() {
 	gi.stdscr.Printf("Final level: %d\n", eg.Level)
 	gi.stdscr.Printf("Treasures collected: %d\n", eg.Treasures)
 	gi.stdscr.Printf("Enemies defeated: %d\n", eg.Enemies)
-	gi.stdscr.Print("\nPress any key to continue...")
+	gi.stdscr.Print("\nPress 'Q' to return to main menu...")
 	gi.stdscr.Refresh()
-	gi.stdscr.GetChar()
+
+	// Ждем нажатия Q для возврата в меню
+    for {
+        char := gi.stdscr.GetChar()
+        if char == 'q' || char == 'Q' {
+            break
+        }
+    }
 }
