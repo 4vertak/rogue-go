@@ -164,3 +164,71 @@ func (gi *GameInterface) getDoorSymbolSafe(x, y int) string {
 	}
 	return string(row[x])
 }
+
+func (gi *GameInterface) GetEnemySprite(enemy *entity.Enemy) [][]rune {
+
+	switch enemy.Type {
+	case entity.Zombie:
+		return sprites.ZombieSprite
+	case entity.Vampire:
+		return sprites.VampirSprite
+	case entity.Ghost:
+		return sprites.GhostSprite
+	case entity.Ogre:
+		return sprites.OgreSprite
+	case entity.SnakeMage:
+		return sprites.SnakeMageSprite
+	case entity.Mimic:
+
+		return gi.GetMimicSprite(enemy)
+	default:
+		return [][]rune{[]rune("E")}
+	}
+}
+
+func (gi *GameInterface) GetMimicSprite(enemy *entity.Enemy) [][]rune {
+	symbol := gi.game.GetEnemySymbol(enemy)
+	if symbol == "M" {
+		return sprites.MimicSprite
+	} else {
+		switch symbol {
+		case "!":
+			return sprites.WeaponSprite
+		case "%":
+			return sprites.FoodSprite
+		case "&":
+			return sprites.PotionSprite
+		case "?":
+			return sprites.ScrollSprite
+		case "$":
+			return sprites.TreasureSprite
+		default:
+			return [][]rune{[]rune("?")}
+
+		}
+	}
+}
+
+func (gi *GameInterface) GetItemSprite(item *entity.Item) [][]rune {
+	switch item.Type {
+	case entity.Weapon:
+		return sprites.WeaponSprite
+	case entity.Food:
+		return sprites.FoodSprite
+	case entity.Potion:
+		return sprites.PotionSprite
+	case entity.Scroll:
+		switch item.SubType {
+		case entity.MaxHealthScroll, entity.AgilityScroll, entity.StrengthScroll:
+			return sprites.ScrollSprite
+		case entity.KeyRed, entity.KeyBlue, entity.KeyGreen, entity.KeyYellow:
+			return sprites.KeySprite
+		default:
+			return [][]rune{[]rune("?")}
+		}
+	case entity.Treasure:
+		return sprites.TreasureSprite
+	default:
+		return [][]rune{[]rune("?")}
+	}
+}

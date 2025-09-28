@@ -2,7 +2,6 @@ package presentation
 
 import (
 	"rogue-go/internal/domain/entity"
-	"rogue-go/internal/presentation/sprites"
 )
 
 func (gi *GameInterface) createWindows() {
@@ -66,47 +65,4 @@ func (gi *GameInterface) renderGame() {
 	gi.renderMessageBar()
 	gi.renderInventory()
 	gi.stdscr.Refresh()
-}
-
-func (gi *GameInterface) GetEnemySprite(enemy *entity.Enemy) [][]rune {
-	switch enemy.Type {
-	case entity.Zombie:
-		return sprites.ZombieSprite
-	case entity.Vampire:
-		return sprites.VampirSprite
-	case entity.Ghost:
-		return sprites.GhostSprite
-	case entity.Ogre:
-		return sprites.OgreSprite
-	case entity.SnakeMage:
-		return sprites.SnakeMageSprite
-	case entity.Mimic:
-		return sprites.MimicSprite
-	default:
-		return [][]rune{[]rune("E")}
-	}
-}
-
-func (gi *GameInterface) GetItemSprite(item *entity.Item) [][]rune {
-	switch item.Type {
-	case entity.Weapon:
-		return sprites.WeaponSprite
-	case entity.Food:
-		return sprites.FoodSprite
-	case entity.Potion:
-		return sprites.PotionSprite
-	case entity.Scroll:
-		switch item.SubType {
-		case entity.MaxHealthScroll, entity.AgilityScroll, entity.StrengthScroll:
-			return sprites.ScrollSprite
-		case entity.KeyRed, entity.KeyBlue, entity.KeyGreen, entity.KeyYellow:
-			return sprites.KeySprite
-		default:
-			return [][]rune{[]rune("?")}
-		}
-	case entity.Treasure:
-		return sprites.TreasureSprite
-	default:
-		return [][]rune{[]rune("?")}
-	}
 }

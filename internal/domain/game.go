@@ -97,7 +97,7 @@ func (g *Game) GetKeyColor(t entity.ItemSubType) int16 { return rules.GetKeyColo
 
 func (g *Game) GetEnemySymbol(t *entity.Enemy) string { return utils.GetEnemySymbol(g.State, t) }
 
-func (g *Game) GetEnemyColor(t *entity.Enemy) int16 { return utils.GetEnemyColor(t) }
+func (g *Game) GetEnemyColor(t *entity.Enemy) int16 { return utils.GetEnemyColor(g.State, t) }
 
 func (g *Game) PickUpItem() { rules.PickUpItem(g.State) }
 

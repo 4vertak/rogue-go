@@ -115,18 +115,39 @@ func GetEnemySymbol(state *entity.GameState, enemy *entity.Enemy) string {
 	}
 }
 
-func GetEnemyColor(enemy *entity.Enemy) int16 {
+func GetEnemyColor(state *entity.GameState, enemy *entity.Enemy) int16 {
 	switch enemy.Type {
 	case entity.Zombie:
-		return 27
+		return entity.ColorZombie
 	case entity.Vampire:
-		return 28
+		return entity.ColorVampire
 	case entity.Ghost:
-		return 29
+		return entity.ColorGhost
 	case entity.Ogre:
-		return 30
+		return entity.ColorOgre
 	case entity.SnakeMage:
-		return 31
+		return entity.ColorSnakeMage
+	case entity.Mimic:
+		symbol := GetEnemySymbol(state, enemy)
+		if symbol == "M" {
+			return entity.ColorMimic
+		} else {
+			switch symbol {
+			case "!":
+				return entity.ColorWeapon
+			case "%":
+				return entity.ColorDefault
+			case "&":
+				return entity.ColorPotion
+			case "?":
+				return entity.ColorDefault
+			case "$":
+				return entity.ColorKeyYellow
+			default:
+				return entity.ColorDefault
+
+			}
+		}
 	default:
 		return 14
 	}
