@@ -40,7 +40,7 @@ func MoveEnemies(state *entity.GameState) {
 				moveTwoStep(state, enemy)
 			case entity.SnakeMage:
 				moveDiagonal(state, enemy)
-			case entity.Mimic: // ДОБАВЛЯЕМ MIMIC
+			case entity.Mimic:
 				moveMimic(state, enemy)
 			default:
 				moveRandom(state, enemy)
@@ -192,7 +192,7 @@ func moveMimic(state *entity.GameState, enemy *entity.Enemy) {
 	// Если раскрыт, ведет себя как обычный враг
 	if !enemy.IsDisguised {
 
-		moveChase(state, enemy)
+		moveRandom(state, enemy)
 	}
 	// Если замаскирован, не двигается
 }
