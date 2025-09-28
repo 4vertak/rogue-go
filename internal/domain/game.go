@@ -67,7 +67,7 @@ func (g *Game) InitializeNewGame() {
 		PlayerDir:      entity.PositionF{X: 1, Y: 0},
 		PlayerPlane:    entity.PositionF{X: 0, Y: 0.66},
 	}
-	g.GenerateLevel(1)
+	g.GenerateLevel(g.State.CurrentLevel)
 	g.AddMessage("Welcome to Go Rogue! Move with WASD")
 }
 
@@ -132,16 +132,17 @@ func (g *Game) UpdateGameState() {
 }
 
 func (g *Game) CheckGameConditions() {
-    if g.State.Player != nil && g.State.Player.Health <= 0 {
-        g.State.GameOver = true
-        g.State.IsRunning = false
-        g.AddMessage("You have died! Game Over.")
-    }
-    
-    // Проверка на победу
-    if g.State.GameWon {
-        g.State.IsRunning = false
-    }
+	if g.State.Player != nil && g.State.Player.Health <= 0 {
+		g.State.GameOver = true
+		g.State.IsRunning = false
+		g.AddMessage("You have died! Game Over.")
+	}
+
+	// Проверка на победу
+	if g.State.Player != nil && g.State.CurrentLevel > 21 && !g.State.GameOver {
+		g.State.GameWon = true
+		g.State.IsRunning = false
+	}
 }
 
 func (g *Game) AddMessage(msg string) {
