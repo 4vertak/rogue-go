@@ -1,0 +1,18 @@
+# Build output (module lives at the repository root)
+/build/
+/rogue
+/rogue-game
+/objectte
+
+# Local saves and statistics; saves with other names need explicit exclusion
+/*.json
+/*.sav
+
+# Local import materials — never commit
+/rogue-go-final-review.zip
+/rogue-go-school21-source-history.bundle
+
+# Local editor / OS
+.vscode/
+.idea/
+.DS_Store

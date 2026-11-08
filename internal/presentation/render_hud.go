@@ -93,12 +93,12 @@ func (gi *GameInterface) showGameOver() {
 	gi.stdscr.Refresh()
 
 	// Ждем нажатия Q для возврата в меню
-    for {
-        char := gi.stdscr.GetChar()
-        if char == 'q' || char == 'Q' {
-            break
-        }
-    }
+	for {
+		char := gi.stdscr.GetChar()
+		if char == 'q' || char == 'Q' {
+			break
+		}
+	}
 }
 
 func (gi *GameInterface) showVictory() {
@@ -114,10 +114,10 @@ func (gi *GameInterface) showVictory() {
 	gi.stdscr.Refresh()
 
 	// Ждем нажатия Q для возврата в меню
-    for {
-        char := gi.stdscr.GetChar()
-        if char == 'q' || char == 'Q' {
-            break
-        }
-    }
+	for {
+		char := gi.stdscr.GetChar()
+		if char == 'q' || char == 'Q' {
+			break
+		}
+	}
 }

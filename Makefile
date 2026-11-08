@@ -1,13 +1,15 @@
 .PHONY: all build run clean
 
+GO ?= go
+
 all: build
 
 build:
-	@mkdir build && go mod tidy && go build -o build/rogue cmd/rogue/main.go
+	mkdir -p build
+	$(GO) build -mod=readonly -o build/rogue ./cmd/rogue
 
-run:
-	@go mod tidy && go run cmd/rogue/main.go
+run: build
+	./build/rogue
 
 clean:
-	@rm -f rogue-game statistics.json *.sav go.sum *.json *.json
-	@rm -rf build/
+	rm -f build/rogue

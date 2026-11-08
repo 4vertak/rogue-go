@@ -33,14 +33,14 @@ func UpdateVisibility(state *entity.GameState) {
 		}
 	}
 
-    // Обновляем видимость врагов
-    for _, enemy := range state.Enemies {
-        if enemy.InvisibilityCooldown == 0 {
-            enemy.IsVisible = state.Level.Visible[enemy.Position.X][enemy.Position.Y]
-        } else {
-            enemy.IsVisible = false // Призраки невидимы во время кулдауна
-        }
-    }
+	// Обновляем видимость врагов
+	for _, enemy := range state.Enemies {
+		if enemy.InvisibilityCooldown == 0 {
+			enemy.IsVisible = state.Level.Visible[enemy.Position.X][enemy.Position.Y]
+		} else {
+			enemy.IsVisible = false // Призраки невидимы во время кулдауна
+		}
+	}
 }
 
 func hasLineOfSight(state *entity.GameState, start, end entity.Position) bool {
@@ -90,14 +90,14 @@ func UpdateEffects(state *entity.GameState) {
 	if state.Player == nil {
 		return
 	}
-	
+
 	for i := len(state.Player.ActiveEffects) - 1; i >= 0; i-- {
 		e := state.Player.ActiveEffects[i]
-		
+
 		// Уменьшаем длительность только для временных эффектов
 		if e.Duration > 0 {
 			e.Duration--
-			
+
 			// Удаляем эффект, когда длительность заканчивается
 			if e.Duration <= 0 {
 				// Отменяем эффект (только для временных бустов)
@@ -109,7 +109,7 @@ func UpdateEffects(state *entity.GameState) {
 					state.Player.Strength -= e.Value
 					state.Messages = append(state.Messages, "Strength boost wore off")
 				}
-				
+
 				state.Player.ActiveEffects = append(state.Player.ActiveEffects[:i], state.Player.ActiveEffects[i+1:]...)
 			}
 		}
