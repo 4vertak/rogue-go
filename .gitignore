@@ -12,6 +12,11 @@
 /rogue-go-final-review.zip
 /rogue-go-school21-source-history.bundle
 
+# Internal preparation reports stay outside the public repository
+/PUBLICATION_REVIEW.md
+/CLEANUP_REPORT.md
+/COMMITS.md
+
 # Local editor / OS
 .vscode/
 .idea/
